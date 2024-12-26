@@ -10,14 +10,14 @@ pub enum Provider {
     OpenAI,
 }
 
-pub struct AI {
+pub struct Copilot {
     provider: Provider,
     base_url: String,
     model: String,
     client: Client,
 }
 
-impl AI {
+impl Copilot {
     pub fn new(
         provider: Provider,
         api_key: impl Into<String>,
