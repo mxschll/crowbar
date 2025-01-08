@@ -1,6 +1,7 @@
 use anyhow::Result;
 use futures_util::{Stream, StreamExt};
 use reqwest::{header, Client};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone)]
@@ -8,6 +9,39 @@ pub enum Provider {
     Anthropic,
     Ollama,
     OpenAI,
+}
+
+impl Provider {
+    pub fn from_string(provider: &str) -> Result<Provider> {
+        match provider.to_lowercase().as_str() {
+            "openai" => Ok(Provider::OpenAI),
+            "anthropic" => Ok(Provider::Anthropic),
+            "ollama" => Ok(Provider::Ollama),
+            _ => Err(anyhow::anyhow!("Unsupported provider: {}", provider)),
+        }
+    }
+
+    pub fn base_url(&self) -> String {
+        match self {
+            Provider::OpenAI => "https://api.openai.com/v1".to_string(),
+            Provider::Anthropic => "https://api.anthropic.com/v1".to_string(),
+            Provider::Ollama => "http://localhost:11434/api".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    User,
+    Assistant,
+    System,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub struct ChatMessage {
+    pub role: Role,
+    pub content: String,
 }
 
 pub struct Copilot {
@@ -26,18 +60,11 @@ impl Copilot {
         let api_key = api_key.into();
         let model = model.into();
 
-        let base_url = match provider {
-            Provider::OpenAI => "https://api.openai.com/v1",
-            Provider::Anthropic => "https://api.anthropic.com/v1",
-            Provider::Ollama => "http://localhost:11434/api",
-        }
-        .to_string();
-
         let headers = create_headers(&provider, &api_key)?;
         let client = Client::builder().default_headers(headers).build()?;
 
         Ok(Self {
-            base_url,
+            base_url: provider.base_url(),
             model,
             provider,
             client,
