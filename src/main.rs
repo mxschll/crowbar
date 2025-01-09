@@ -3,13 +3,11 @@ mod copilot;
 use config::CrowbarConfig;
 use copilot::Copilot;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::error::Error;
 use std::ops::Range;
 use std::rc::{Rc, Weak};
-use std::{cell::RefCell, collections::HashMap};
 
 use futures::StreamExt;
 
@@ -88,6 +86,27 @@ struct ConversationNode {
 }
 
 impl ConversationNode {
+    /// Returns a vector of nodes that have 2 or more children (branch nodes)
+    fn get_branch_nodes(&self) -> Vec<Rc<ConversationNode>> {
+        let mut branch_nodes = Vec::new();
+        let mut nodes_to_visit = vec![Rc::new(self.clone())];
+
+        while let Some(current_node) = nodes_to_visit.pop() {
+            let children = current_node.children.borrow();
+
+            // If node has 2 or more children, add it to branch_nodes
+            if children.len() >= 2 {
+                branch_nodes.push(current_node.clone());
+            }
+
+            // Add all children to nodes_to_visit for traversal
+            for child in children.iter() {
+                nodes_to_visit.push(child.clone());
+            }
+        }
+
+        branch_nodes
+    }
     /// Returns a vector of MessageFormat objects representing the conversation path
     /// from the root to this node, in chronological order.
     fn get_conversation_context(&self) -> Vec<MessageFormat> {
@@ -700,8 +719,6 @@ impl Crowbar {
             .active_node
             .add_child(Message::new(Role::User, content.clone()));
 
-        dbg!(&self.active_node.get_conversation_context());
-
         let _ = cx
             .spawn(|view, mut cx| {
                 let copilot_provider = match &self.crowbar_config.copilot_options.provider {
@@ -768,7 +785,7 @@ impl Render for Crowbar {
                     // Sidebar
                     .child(
                         div()
-                            .w(px(250.))
+                            .w_1_4()
                             .h_full()
                             .border_r_1()
                             .border_color(rgb(0x3B4B4F))
@@ -776,86 +793,80 @@ impl Render for Crowbar {
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .children(vec![
-                                // Main conversation
-                                div()
-                                    .hover(|s| s.bg(rgba(0xffffff11)))
-                                    .cursor_pointer()
-                                    .child("🗪 Main Thread"),
-                                // Branch 1 with sub-conversations
-                                div().pl_4().flex().flex_col().gap_1().children(vec![
+                            .children({
+                                let mut elements = vec![
+                                    // Main conversation root
                                     div()
                                         .hover(|s| s.bg(rgba(0xffffff11)))
                                         .cursor_pointer()
-                                        .child("└─ Branch 1"),
-                                    div()
-                                        .pl_6()
-                                        .hover(|s| s.bg(rgba(0xffffff11)))
-                                        .cursor_pointer()
-                                        .child("└─ Sub-branch 1.1"),
-                                    div()
-                                        .pl_6()
-                                        .hover(|s| s.bg(rgba(0xffffff11)))
-                                        .cursor_pointer()
-                                        .child("└─ Sub-branch 1.2"),
-                                ]),
-                                // Branch 2
-                                div()
-                                    .pl_4()
-                                    .hover(|s| s.bg(rgba(0xffffff11)))
-                                    .cursor_pointer()
-                                    .child("└─ Branch 2"),
-                                // Branch 3 with sub-conversation
-                                div().pl_4().flex().flex_col().gap_1().children(vec![
-                                    div()
-                                        .hover(|s| s.bg(rgba(0xffffff11)))
-                                        .cursor_pointer()
-                                        .child("└─ Branch 3"),
-                                    div()
-                                        .pl_6()
-                                        .hover(|s| s.bg(rgba(0xffffff11)))
-                                        .cursor_pointer()
-                                        .child("└─ Sub-branch 3.1"),
-                                ]),
-                            ]),
+                                        .child("- Main Thread"),
+                                ];
+
+                                // Add branch nodes
+                                let branch_nodes = self.conversation_tree.get_branch_nodes();
+                                for node in branch_nodes {
+                                    let msg = node.value.borrow();
+                                    let preview = msg.content.chars().take(20).collect::<String>();
+
+                                    elements.push(
+                                        div()
+                                            .pl_4()
+                                            .hover(|s| s.bg(rgba(0xffffff11)))
+                                            .cursor_pointer()
+                                            .child(format!("└─ {}", preview)),
+                                    );
+                                }
+
+                                elements
+                            }),
                     )
                     // Input
                     .child(
                         div()
+                            .w_3_4()
                             .flex()
                             .flex_col()
-                            .size_full()
-                            .min_h(px(0.)) // Allows container to shrink
                             .child(
                                 div()
                                     .id("conversation-container")
                                     .flex()
                                     .flex_col()
-                                    .flex_grow()
-                                    .min_h(px(0.)) // Allows container to shrink
+                                    .size_full()
                                     .overflow_y_scroll()
-                                    .on_mouse_move(|_, cx| cx.stop_propagation())
-                                    .on_mouse_down(MouseButton::Left, |_, cx| cx.stop_propagation())
-                                    .cursor_text()
                                     .child(
-                                        div().flex().flex_col().gap_2().p_4().children(
+                                        div().gap_2().p_4().children(
                                             self.active_node
                                                 .get_conversation_context()
                                                 .into_iter()
                                                 .map(|msg| {
-                                                    div().children(vec![
+                                                    div().mb_4().children(vec![
                                                         div()
-                                                            .text_color(rgb(0xDD513C))
-                                                            .child(msg.role),
+                                                            .flex()
+                                                            .flex_row()
+                                                            .justify_between()
+                                                            .items_center()
+                                                            .children(vec![
+                                                                div()
+                                                                    .text_color(rgb(0xDD513C))
+                                                                    .child(msg.role),
+                                                                div()
+                                                                    .cursor_pointer()
+                                                                    .hover(|s| {
+                                                                        s.text_color(rgb(0xffffff))
+                                                                    })
+                                                                    .text_color(rgba(0xffffff88))
+                                                                    .px_2()
+                                                                    .child("⋯"),
+                                                            ]),
                                                         div().child(msg.content.clone()),
                                                     ])
                                                 }),
                                         ),
                                     ),
-                            ),
+                            )
+                            .child(self.text_input.clone()),
                     ),
             )
-            .child(self.text_input.clone())
     }
 }
 

@@ -18,4 +18,3 @@ unicode-segmentation = "1.12.0"
 gpui = { git = "https://github.com/zed-industries/zed" }
 ui = { git = "https://github.com/zed-industries/zed" }
 chrono = "0.4.39"
-uuid = "1.11.0"
