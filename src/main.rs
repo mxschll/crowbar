@@ -5,9 +5,11 @@ use copilot::Copilot;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use std::collections::HashMap;
+use std::borrow::BorrowMut;
 use std::error::Error;
 use std::ops::Range;
+use std::rc::{Rc, Weak};
+use std::{cell::RefCell, collections::HashMap};
 
 use futures::StreamExt;
 
@@ -53,13 +55,12 @@ enum Role {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Message {
-    id: Uuid,
     role: Role,
     content: String,
     timestamp: DateTime<Utc>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct MessageFormat {
     role: String,
     content: String,
@@ -68,53 +69,71 @@ struct MessageFormat {
 impl Message {
     fn new(role: Role, content: String) -> Message {
         Message {
-            id: Uuid::new_v4(),
             role,
             content,
             timestamp: Utc::now(),
         }
     }
-}
 
-trait ConversationBehavior {
-    fn add_message(&mut self, message: Message);
-    fn append_message_content(&mut self, id: &Uuid, content: String);
-    fn ordered_messages(&self) -> Vec<&Message>;
-    fn formatted_messages(&self) -> Vec<MessageFormat>;
-}
-
-type Conversation = HashMap<Uuid, Message>;
-
-impl ConversationBehavior for HashMap<Uuid, Message> {
-    fn add_message(&mut self, message: Message) {
-        self.insert(message.id, message);
+    fn append_message_content(&mut self, content: String) {
+        self.content.push_str(&content);
     }
+}
 
-    fn append_message_content(&mut self, id: &Uuid, content: String) {
-        if let Some(message) = self.get_mut(id) {
-            message.content.push_str(&content);
+#[derive(Debug, Clone)]
+struct ConversationNode {
+    value: RefCell<Message>,
+    parent: RefCell<Weak<ConversationNode>>,
+    children: RefCell<Vec<Rc<ConversationNode>>>,
+}
+
+impl ConversationNode {
+    /// Returns a vector of MessageFormat objects representing the conversation path
+    /// from the root to this node, in chronological order.
+    fn get_conversation_context(&self) -> Vec<MessageFormat> {
+        let mut messages = Vec::new();
+        let mut current = Some(Rc::new(self.clone()));
+
+        // First collect messages by walking up the tree to the root
+        while let Some(node) = current {
+            messages.push(node.value.borrow().clone());
+            current = node.parent.borrow().upgrade().map(|p| p.clone());
         }
-    }
 
-    fn ordered_messages(&self) -> Vec<&Message> {
-        let mut messages: Vec<_> = self.values().collect();
-        messages.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-        messages
-    }
+        // Reverse to get chronological order (root first)
+        messages.reverse();
 
-    fn formatted_messages(&self) -> Vec<MessageFormat> {
-        let messages = self.ordered_messages();
+        // Convert to MessageFormat
         messages
-            .iter()
+            .into_iter()
             .map(|msg| MessageFormat {
                 role: match msg.role {
                     Role::User => "user".to_string(),
                     Role::System => "system".to_string(),
                     Role::Assistant => "assistant".to_string(),
                 },
-                content: msg.content.clone(),
+                content: msg.content,
             })
             .collect()
+    }
+
+    fn new(value: Message) -> Rc<ConversationNode> {
+        Rc::new(ConversationNode {
+            value: RefCell::new(value),
+            parent: RefCell::new(Weak::new()),
+            children: RefCell::new(vec![]),
+        })
+    }
+
+    fn add_child(self: &Rc<ConversationNode>, value: Message) -> Rc<ConversationNode> {
+        let child = ConversationNode::new(value);
+        *child.parent.borrow_mut() = Rc::downgrade(self);
+        self.children.borrow_mut().push(Rc::clone(&child));
+        child
+    }
+
+    fn set_value(&self, new_value: Message) {
+        *self.value.borrow_mut() = new_value;
     }
 }
 
@@ -650,13 +669,13 @@ impl FocusableView for TextInput {
     }
 }
 
-#[derive(Clone)]
 struct Crowbar {
     crowbar_config: CrowbarConfig,
     text_input: View<TextInput>,
     recent_keystrokes: Vec<Keystroke>,
     focus_handle: FocusHandle,
-    conversation: Conversation,
+    conversation_tree: Rc<ConversationNode>,
+    active_node: Rc<ConversationNode>,
 }
 
 impl FocusableView for Crowbar {
@@ -677,10 +696,11 @@ impl Crowbar {
             input.reset();
         });
 
-        self.conversation
-            .add_message(Message::new(Role::User, content.clone()));
+        self.active_node = self
+            .active_node
+            .add_child(Message::new(Role::User, content.clone()));
 
-        let conversation = serde_json::to_string(&self.conversation.formatted_messages()).unwrap();
+        dbg!(&self.active_node.get_conversation_context());
 
         let _ = cx
             .spawn(|view, mut cx| {
@@ -701,22 +721,24 @@ impl Crowbar {
 
                 let ai = Copilot::new(copilot_provider, copilot_api_key, copilot_model).unwrap();
 
+                let conversation =
+                    serde_json::to_string(&self.active_node.get_conversation_context()).unwrap();
+
+                self.active_node = self
+                    .active_node
+                    .add_child(Message::new(Role::Assistant, "".to_string()));
+
                 async move {
                     let mut stream = ai.stream_chat(&conversation).await.unwrap();
-
-                    let message = Message::new(Role::Assistant, "".into());
-                    let uuid = message.id;
-
-                    let _ = view.update(&mut cx, |view, _cx| {
-                        view.conversation.add_message(message);
-                    });
 
                     // Process the response as it comes in
                     while let Some(chunk) = stream.next().await {
                         // dbg!(&chunk);
                         let _ = view.update(&mut cx, |view, cx| {
-                            view.conversation
-                                .append_message_content(&uuid, chunk.unwrap());
+                            view.active_node
+                                .value
+                                .borrow_mut()
+                                .append_message_content(chunk.unwrap());
                             cx.notify();
                         });
                     }
@@ -799,38 +821,38 @@ impl Render for Crowbar {
                     )
                     // Input
                     .child(
-                        div().flex().flex_col().size_full().child(
-                            div()
-                                .id("test")
-                                .text_size(px(16.))
-                                .flex_grow()
-                                .overflow_y_scroll()
-                                .on_mouse_move(|_, cx| cx.stop_propagation())
-                                .on_mouse_down(MouseButton::Left, |_, cx| cx.stop_propagation())
-                                .cursor_text()
-                                .child({
-                                    div().flex().flex_col().gap_2().p_4().children(
-                                        self.conversation
-                                            .ordered_messages()
-                                            .into_iter()
-                                            .filter(|msg| !matches!(msg.role, Role::System))
-                                            .map(|msg| {
-                                                let prefix_text = match msg.role {
-                                                    Role::User => "You",
-                                                    Role::Assistant => "Assistant",
-                                                    Role::System => unreachable!(), // filtered out above
-                                                };
-
-                                                div().children(vec![
-                                                    div()
-                                                        .text_color(rgb(0xDD513C))
-                                                        .child(prefix_text),
-                                                    div().child(msg.content.clone()),
-                                                ])
-                                            }),
-                                    )
-                                }),
-                        ),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .size_full()
+                            .min_h(px(0.)) // Allows container to shrink
+                            .child(
+                                div()
+                                    .id("conversation-container")
+                                    .flex()
+                                    .flex_col()
+                                    .flex_grow()
+                                    .min_h(px(0.)) // Allows container to shrink
+                                    .overflow_y_scroll()
+                                    .on_mouse_move(|_, cx| cx.stop_propagation())
+                                    .on_mouse_down(MouseButton::Left, |_, cx| cx.stop_propagation())
+                                    .cursor_text()
+                                    .child(
+                                        div().flex().flex_col().gap_2().p_4().children(
+                                            self.active_node
+                                                .get_conversation_context()
+                                                .into_iter()
+                                                .map(|msg| {
+                                                    div().children(vec![
+                                                        div()
+                                                            .text_color(rgb(0xDD513C))
+                                                            .child(msg.role),
+                                                        div().child(msg.content.clone()),
+                                                    ])
+                                                }),
+                                        ),
+                                    ),
+                            ),
                     ),
             )
             .child(self.text_input.clone())
@@ -842,14 +864,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let crowbar_config = config::load();
 
     App::new().run(|cx: &mut AppContext| {
-        let mut chat_history: Conversation = HashMap::<Uuid, Message>::new();
-
-        // Init convo with system promt (let's make this confuguratble in the future)
-        chat_history.add_message(Message::new(
-            Role::System,
-            "You are a helpful assistant. Answer in plaintext.".to_string(),
-        ));
-
         let bounds = Bounds::centered(None, size(px(800.0), px(500.0)), cx);
         cx.bind_keys([
             KeyBinding::new("enter", Enter, None),
@@ -887,13 +901,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         is_selecting: false,
                     });
 
+                    let conversation_tree = ConversationNode::new(Message::new(
+                        Role::System,
+                        "You are a helpful assistant. Answer in plaintext.".to_string(),
+                    ));
+
                     let crowbar = cx.new_view(|cx| {
                         let crowbar = Crowbar {
                             crowbar_config,
                             text_input: text_input.clone(),
                             recent_keystrokes: vec![],
                             focus_handle: cx.focus_handle(),
-                            conversation: chat_history.clone(),
+                            active_node: conversation_tree.clone(),
+                            conversation_tree,
                         };
 
                         crowbar
