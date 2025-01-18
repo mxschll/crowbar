@@ -1,9 +1,14 @@
 mod config;
+mod conversation;
 mod copilot;
+
 use config::CrowbarConfig;
+use conversation::{ConversationNode, Message, Role};
 use copilot::Copilot;
+
 use serde::{Deserialize, Serialize};
 
+use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::error::Error;
 use std::ops::Range;
@@ -19,6 +24,8 @@ use gpui::{
     UTF16Selection, UnderlineStyle, View, ViewContext, ViewInputHandler, WindowBounds,
     WindowContext, WindowOptions,
 };
+
+use log::{debug, error, info, log_enabled, Level};
 
 use unicode_segmentation::*;
 
@@ -43,118 +50,6 @@ actions!(
 );
 
 use chrono::{DateTime, Utc};
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum Role {
-    User,
-    System,
-    Assistant,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Message {
-    role: Role,
-    content: String,
-    timestamp: DateTime<Utc>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct MessageFormat {
-    role: String,
-    content: String,
-}
-
-impl Message {
-    fn new(role: Role, content: String) -> Message {
-        Message {
-            role,
-            content,
-            timestamp: Utc::now(),
-        }
-    }
-
-    fn append_message_content(&mut self, content: String) {
-        self.content.push_str(&content);
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ConversationNode {
-    value: RefCell<Message>,
-    parent: RefCell<Weak<ConversationNode>>,
-    children: RefCell<Vec<Rc<ConversationNode>>>,
-}
-
-impl ConversationNode {
-    /// Returns a vector of nodes that have 2 or more children (branch nodes)
-    fn get_branch_nodes(&self) -> Vec<Rc<ConversationNode>> {
-        let mut branch_nodes = Vec::new();
-        let mut nodes_to_visit = vec![Rc::new(self.clone())];
-
-        while let Some(current_node) = nodes_to_visit.pop() {
-            let children = current_node.children.borrow();
-
-            // If node has 2 or more children, add it to branch_nodes
-            if children.len() >= 2 {
-                branch_nodes.push(current_node.clone());
-            }
-
-            // Add all children to nodes_to_visit for traversal
-            for child in children.iter() {
-                nodes_to_visit.push(child.clone());
-            }
-        }
-
-        branch_nodes
-    }
-    /// Returns a vector of MessageFormat objects representing the conversation path
-    /// from the root to this node, in chronological order.
-    fn get_conversation_context(&self) -> Vec<MessageFormat> {
-        let mut messages = Vec::new();
-        let mut current = Some(Rc::new(self.clone()));
-
-        // First collect messages by walking up the tree to the root
-        while let Some(node) = current {
-            messages.push(node.value.borrow().clone());
-            current = node.parent.borrow().upgrade().map(|p| p.clone());
-        }
-
-        // Reverse to get chronological order (root first)
-        messages.reverse();
-
-        // Convert to MessageFormat
-        messages
-            .into_iter()
-            .map(|msg| MessageFormat {
-                role: match msg.role {
-                    Role::User => "user".to_string(),
-                    Role::System => "system".to_string(),
-                    Role::Assistant => "assistant".to_string(),
-                },
-                content: msg.content,
-            })
-            .collect()
-    }
-
-    fn new(value: Message) -> Rc<ConversationNode> {
-        Rc::new(ConversationNode {
-            value: RefCell::new(value),
-            parent: RefCell::new(Weak::new()),
-            children: RefCell::new(vec![]),
-        })
-    }
-
-    fn add_child(self: &Rc<ConversationNode>, value: Message) -> Rc<ConversationNode> {
-        let child = ConversationNode::new(value);
-        *child.parent.borrow_mut() = Rc::downgrade(self);
-        self.children.borrow_mut().push(Rc::clone(&child));
-        child
-    }
-
-    fn set_value(&self, new_value: Message) {
-        *self.value.borrow_mut() = new_value;
-    }
-}
 
 struct TextInput {
     focus_handle: FocusHandle,
@@ -703,6 +598,19 @@ impl FocusableView for Crowbar {
     }
 }
 
+fn branch_conversation_button(
+    text: &str,
+    on_click: impl Fn(&mut WindowContext) + 'static,
+) -> impl IntoElement {
+    div()
+        .id(SharedString::from(text.to_string()))
+        .flex_none()
+        .active(|this| this.opacity(0.85))
+        .cursor_pointer()
+        .child(text.to_string())
+        .on_click(move |_, cx| on_click(cx))
+}
+
 impl Crowbar {
     fn escape(&mut self, _: &Escape, cx: &mut ViewContext<Self>) {
         cx.quit();
@@ -717,7 +625,7 @@ impl Crowbar {
 
         self.active_node = self
             .active_node
-            .add_child(Message::new(Role::User, content.clone()));
+            .add_child(Message::new(Role::User, &content));
 
         let _ = cx
             .spawn(|view, mut cx| {
@@ -743,7 +651,7 @@ impl Crowbar {
 
                 self.active_node = self
                     .active_node
-                    .add_child(Message::new(Role::Assistant, "".to_string()));
+                    .add_child(Message::new(Role::Assistant, ""));
 
                 async move {
                     let mut stream = ai.stream_chat(&conversation).await.unwrap();
@@ -753,9 +661,8 @@ impl Crowbar {
                         // dbg!(&chunk);
                         let _ = view.update(&mut cx, |view, cx| {
                             view.active_node
-                                .value
-                                .borrow_mut()
-                                .append_message_content(chunk.unwrap());
+                                .borrow_message_mut()
+                                .append_message_content(&chunk.unwrap());
                             cx.notify();
                         });
                     }
@@ -768,6 +675,7 @@ impl Crowbar {
 impl Render for Crowbar {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         div()
+            .id("crowbar")
             .track_focus(&self.focus_handle(cx)) // Required for .on_action to work
             .on_action(cx.listener(Self::handle_enter))
             .on_action(cx.listener(Self::escape))
@@ -785,6 +693,8 @@ impl Render for Crowbar {
                     // Sidebar
                     .child(
                         div()
+                            .id("sidebar")
+                            .overflow_y_scroll()
                             .w_1_4()
                             .h_full()
                             .border_r_1()
@@ -799,22 +709,87 @@ impl Render for Crowbar {
                                     div()
                                         .hover(|s| s.bg(rgba(0xffffff11)))
                                         .cursor_pointer()
-                                        .child("- Main Thread"),
+                                        .child("Main Thread"),
                                 ];
 
-                                // Add branch nodes
-                                let branch_nodes = self.conversation_tree.get_branch_nodes();
+                                // Add branch nodes and their children
+                                let branch_nodes = self.conversation_tree.get_branching_points();
                                 for node in branch_nodes {
-                                    let msg = node.value.borrow();
-                                    let preview = msg.content.chars().take(20).collect::<String>();
+                                    let depth = node.get_depth();
+                                    let padding = (depth * 16) as f32;
 
+                                    // Get the branch number at current level
+                                    let branch_number = node
+                                        .get_parent_ref()
+                                        .borrow()
+                                        .upgrade()
+                                        .map(|parent| {
+                                            parent
+                                                .get_children_ref()
+                                                .borrow()
+                                                .iter()
+                                                .position(|child| Rc::ptr_eq(child, &node))
+                                                .map(|pos| pos + 1)
+                                                .unwrap_or(0)
+                                        })
+                                        .unwrap_or(0);
+
+                                    // Build the full branch path (e.g., "1.2.3")
+                                    let mut branch_path = Vec::new();
+                                    let mut current = Some(node.clone());
+                                    while let Some(n) = current {
+                                        if let Some(parent) = n.get_parent_ref().borrow().upgrade()
+                                        {
+                                            let pos = parent
+                                                .get_children_ref()
+                                                .borrow()
+                                                .iter()
+                                                .position(|child| Rc::ptr_eq(child, &n))
+                                                .map(|pos| pos + 1)
+                                                .unwrap_or(0);
+                                            branch_path.push(pos.to_string());
+                                            current = Some(parent);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    branch_path.reverse();
+                                    let branch_label = branch_path.join(".");
+
+                                    // Add the branch node
                                     elements.push(
                                         div()
-                                            .pl_4()
+                                            .pl(px(padding))
                                             .hover(|s| s.bg(rgba(0xffffff11)))
                                             .cursor_pointer()
-                                            .child(format!("└─ {}", preview)),
+                                            .child(format!("↳ Branch {}", branch_label)),
                                     );
+
+                                    // Add only non-branching children of this branch node
+                                    // Create a longer-lived binding for the borrowed value
+                                    let children_ref = node.get_children_ref();
+                                    let children = children_ref.borrow();
+
+                                    for (idx, child) in children.iter().enumerate() {
+                                        // Only show child if it's not a branch node itself
+                                        if child.get_children_ref().borrow().len() < 2 {
+                                            let child_depth = child.get_depth();
+                                            let child_padding = (child_depth * 16) as f32;
+                                            let child_number = idx + 1;
+
+                                            elements.push(
+                                                div()
+                                                    .pl(px(child_padding))
+                                                    .hover(|s| s.bg(rgba(0xffffff11)))
+                                                    .cursor_pointer()
+                                                    .text_color(rgba(0xA4FBFE)) // Slightly dimmed to distinguish from branch nodes
+                                                    .child(format!(
+                                                        "• Branch {}.{}",
+                                                        branch_label, child_number
+                                                    )),
+                                            );
+                                        }
+                                    }
                                 }
 
                                 elements
@@ -833,36 +808,50 @@ impl Render for Crowbar {
                                     .flex_col()
                                     .size_full()
                                     .overflow_y_scroll()
-                                    .child(
-                                        div().gap_2().p_4().children(
-                                            self.active_node
-                                                .get_conversation_context()
-                                                .into_iter()
-                                                .map(|msg| {
-                                                    div().mb_4().children(vec![
-                                                        div()
-                                                            .flex()
-                                                            .flex_row()
-                                                            .justify_between()
-                                                            .items_center()
-                                                            .children(vec![
-                                                                div()
-                                                                    .text_color(rgb(0xDD513C))
-                                                                    .child(msg.role),
-                                                                div()
-                                                                    .cursor_pointer()
-                                                                    .hover(|s| {
-                                                                        s.text_color(rgb(0xffffff))
-                                                                    })
-                                                                    .text_color(rgba(0xffffff88))
-                                                                    .px_2()
-                                                                    .child("⋯"),
-                                                            ]),
-                                                        div().child(msg.content.clone()),
-                                                    ])
-                                                }),
+                                    .child(div().gap_2().p_4().children(
+                                        self.active_node.get_parent_nodes().into_iter().map(
+                                            |node| {
+                                                let message_role =
+                                                    node.borrow_message().get_role().to_string();
+                                                let message_content =
+                                                    node.borrow_message().get_content().clone();
+
+                                                div().mb_4().children(vec![
+                                                    div()
+                                                        .flex()
+                                                        .flex_row()
+                                                        .justify_between()
+                                                        .items_center()
+                                                        .children(vec![
+                                                            div()
+                                                                .text_color(rgb(0xDD513C))
+                                                                .child(message_role),
+                                                            div()
+                                                                .cursor_pointer()
+                                                                .hover(|s| {
+                                                                    s.text_color(rgb(0xffffff))
+                                                                })
+                                                                .text_color(rgba(0xffffff88))
+                                                                .px_2()
+                                                                .child(branch_conversation_button(
+                                                                    "+ Branch",
+                                                                    move |cx| {
+                                                                        dbg!("Here");
+
+                                                                        node.add_child(
+                                                                            Message::new(
+                                                                                Role::System,
+                                                                                "Branch",
+                                                                            ),
+                                                                        );
+                                                                    },
+                                                                )),
+                                                        ]),
+                                                    div().child(message_content.to_string()),
+                                                ])
+                                            },
                                         ),
-                                    ),
+                                    )),
                             )
                             .child(self.text_input.clone()),
                     ),
@@ -872,6 +861,8 @@ impl Render for Crowbar {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+
     let crowbar_config = config::load();
 
     App::new().run(|cx: &mut AppContext| {
@@ -914,7 +905,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     let conversation_tree = ConversationNode::new(Message::new(
                         Role::System,
-                        "You are a helpful assistant. Answer in plaintext.".to_string(),
+                        "You are a helpful assistant. Answer in plaintext.",
                     ));
 
                     let crowbar = cx.new_view(|cx| {
