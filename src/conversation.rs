@@ -119,16 +119,16 @@ impl ConversationNode {
     /// Returns the depth of this node in the tree (0 for root)
     pub fn get_depth(&self) -> usize {
         let mut depth = 0;
-        let mut current = Some(Rc::new(self.clone()));
+        let mut current = Rc::new(self.clone());
 
-        loop {}
-
-        while let Some(node) = current {
-            if let Some(parent) = node.parent.borrow().upgrade() {
-                depth += 1;
-                current = Some(parent);
-            } else {
-                break;
+        loop {
+            let parent = current.parent.borrow().upgrade();
+            match parent {
+                Some(p) => {
+                    depth += 1;
+                    current = p;
+                }
+                None => break,
             }
         }
 
@@ -157,18 +157,16 @@ impl ConversationNode {
         branch_nodes
     }
 
-    pub fn get_parent_nodes(&self) -> Vec<Rc<ConversationNode>> {
+    pub fn get_parent_nodes(self: &Rc<ConversationNode>) -> Vec<Rc<ConversationNode>> {
         let mut nodes = Vec::new();
-
-        let mut current = Some(Rc::new(self.clone()));
+        let mut current = Some(Rc::clone(self));
 
         while let Some(node) = current {
-            nodes.push(node.clone());
+            nodes.push(Rc::clone(&node));
             current = node.parent.borrow().upgrade();
         }
 
         nodes.reverse();
-
         nodes
     }
 

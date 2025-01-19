@@ -714,85 +714,45 @@ impl Render for Crowbar {
 
                                 // Add branch nodes and their children
                                 let branch_nodes = self.conversation_tree.get_branching_points();
+
                                 for node in branch_nodes {
+                                    let node_content = node.borrow_message().get_content();
                                     let depth = node.get_depth();
-                                    let padding = (depth * 16) as f32;
-
-                                    // Get the branch number at current level
-                                    let branch_number = node
-                                        .get_parent_ref()
-                                        .borrow()
-                                        .upgrade()
-                                        .map(|parent| {
-                                            parent
-                                                .get_children_ref()
-                                                .borrow()
-                                                .iter()
-                                                .position(|child| Rc::ptr_eq(child, &node))
-                                                .map(|pos| pos + 1)
-                                                .unwrap_or(0)
-                                        })
-                                        .unwrap_or(0);
-
-                                    // Build the full branch path (e.g., "1.2.3")
-                                    let mut branch_path = Vec::new();
-                                    let mut current = Some(node.clone());
-                                    while let Some(n) = current {
-                                        if let Some(parent) = n.get_parent_ref().borrow().upgrade()
-                                        {
-                                            let pos = parent
-                                                .get_children_ref()
-                                                .borrow()
-                                                .iter()
-                                                .position(|child| Rc::ptr_eq(child, &n))
-                                                .map(|pos| pos + 1)
-                                                .unwrap_or(0);
-                                            branch_path.push(pos.to_string());
-                                            current = Some(parent);
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    branch_path.reverse();
-                                    let branch_label = branch_path.join(".");
-
-                                    // Add the branch node
+                                    
                                     elements.push(
                                         div()
-                                            .pl(px(padding))
+                                            .pl(px(depth as f32 * 16.0)) // Indent based on depth
+                                            .py_1()
                                             .hover(|s| s.bg(rgba(0xffffff11)))
                                             .cursor_pointer()
-                                            .child(format!("↳ Branch {}", branch_label)),
-                                    );
-
-                                    // Add only non-branching children of this branch node
-                                    // Create a longer-lived binding for the borrowed value
-                                    let children_ref = node.get_children_ref();
-                                    let children = children_ref.borrow();
-
-                                    for (idx, child) in children.iter().enumerate() {
-                                        // Only show child if it's not a branch node itself
-                                        if child.get_children_ref().borrow().len() < 2 {
-                                            let child_depth = child.get_depth();
-                                            let child_padding = (child_depth * 16) as f32;
-                                            let child_number = idx + 1;
-
-                                            elements.push(
+                                            .child(
                                                 div()
-                                                    .pl(px(child_padding))
-                                                    .hover(|s| s.bg(rgba(0xffffff11)))
-                                                    .cursor_pointer()
-                                                    .text_color(rgba(0xA4FBFE)) // Slightly dimmed to distinguish from branch nodes
-                                                    .child(format!(
-                                                        "• Branch {}.{}",
-                                                        branch_label, child_number
-                                                    )),
-                                            );
-                                        }
-                                    }
+                                                    .flex()
+                                                    .flex_row()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .children(vec![
+                                                        // Tree branch indicator
+                                                        div()
+                                                            .text_color(rgb(0x3B4B4F))
+                                                            .child("└─"),
+                                                        // Message content (truncated if too long)
+                                                        div().child(
+                                                            if node_content.len() > 30 {
+                                                                format!("{}...", &node_content[..30])
+                                                            } else {
+                                                                node_content
+                                                            }
+                                                        )
+                                                    ])
+                                            )
+                                    );
                                 }
 
+
                                 elements
+
+                            
                             }),
                     )
                     // Input
@@ -838,12 +798,18 @@ impl Render for Crowbar {
                                                                     move |cx| {
                                                                         dbg!("Here");
 
-                                                                        node.add_child(
-                                                                            Message::new(
-                                                                                Role::System,
-                                                                                "Branch",
-                                                                            ),
-                                                                        );
+                                                                        let window_handle = cx.window_handle();
+                                                                        let _ = window_handle.update(cx, |_, _| {
+                                                                            // Create new branch from this node
+                                                                            let _ = node.add_child(
+                                                                                Message::new(
+                                                                                    Role::System,
+                                                                                    "Branch",
+                                                                                ),
+                                                                            );
+
+                                                                       });
+
                                                                     },
                                                                 )),
                                                         ]),
