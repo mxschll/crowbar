@@ -1,6 +1,7 @@
 mod config;
 mod conversation;
 mod copilot;
+mod executable_finder;
 
 use config::CrowbarConfig;
 use conversation::{ConversationNode, Message, Role};
@@ -18,10 +19,10 @@ use futures::StreamExt;
 
 use gpui::{
     actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, App, AppContext,
-    Bounds, ClipboardItem, CursorStyle, ElementId, ElementInputHandler, FocusHandle, FocusableView,
-    GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Style, TextRun,
-    UTF16Selection, UnderlineStyle, View, ViewContext, ViewInputHandler, WindowBounds,
+    Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, FocusHandle,
+    FocusableView, GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Style,
+    TextRun, UTF16Selection, UnderlineStyle, View, ViewContext, ViewInputHandler, WindowBounds,
     WindowContext, WindowOptions,
 };
 
@@ -715,44 +716,65 @@ impl Render for Crowbar {
                                 // Add branch nodes and their children
                                 let branch_nodes = self.conversation_tree.get_branching_points();
 
-                                for node in branch_nodes {
-                                    let node_content = node.borrow_message().get_content();
-                                    let depth = node.get_depth();
-                                    
+                                for branch_node in branch_nodes {
+                                    let node_content = branch_node.borrow_message().get_content();
+                                    let depth = branch_node.get_depth();
+
+                                    // Add the branch node
                                     elements.push(
                                         div()
-                                            .pl(px(depth as f32 * 16.0)) // Indent based on depth
-                                            .py_1()
+                                            .pl(px(depth as f32 * 12.0))
                                             .hover(|s| s.bg(rgba(0xffffff11)))
                                             .cursor_pointer()
                                             .child(
-                                                div()
-                                                    .flex()
-                                                    .flex_row()
-                                                    .items_center()
-                                                    .gap_2()
-                                                    .children(vec![
-                                                        // Tree branch indicator
-                                                        div()
-                                                            .text_color(rgb(0x3B4B4F))
-                                                            .child("└─"),
-                                                        // Message content (truncated if too long)
-                                                        div().child(
-                                                            if node_content.len() > 30 {
-                                                                format!("{}...", &node_content[..30])
-                                                            } else {
-                                                                node_content
-                                                            }
-                                                        )
-                                                    ])
-                                            )
+                                                div().flex().flex_row().items_center().children(
+                                                    vec![
+                                                        div().text_color(rgb(0x3B4B4F)).child("└─"),
+                                                        div().child(if node_content.len() > 30 {
+                                                            format!("{}...", &node_content[..30])
+                                                        } else {
+                                                            node_content
+                                                        }),
+                                                    ],
+                                                ),
+                                            ),
                                     );
+
+                                    let children = branch_node.get_children_ref();
+                                    // Add all children of this branch node
+                                    for child in children.borrow().iter() {
+                                        let child_content = child.borrow_message().get_content();
+                                        elements.push(
+                                            div()
+                                                .pl(px((depth + 1) as f32 * 12.0))
+                                                .hover(|s| s.bg(rgba(0xffffff11)))
+                                                .cursor_pointer()
+                                                .child(
+                                                    div()
+                                                        .flex()
+                                                        .flex_row()
+                                                        .items_center()
+                                                        .children(vec![
+                                                            div()
+                                                                .text_color(rgb(0x3B4B4F))
+                                                                .child("├─"),
+                                                            div().child(
+                                                                if child_content.len() > 30 {
+                                                                    format!(
+                                                                        "{}...",
+                                                                        &child_content[..30]
+                                                                    )
+                                                                } else {
+                                                                    child_content
+                                                                },
+                                                            ),
+                                                        ]),
+                                                ),
+                                        );
+                                    }
                                 }
 
-
                                 elements
-
-                            
                             }),
                     )
                     // Input
@@ -796,20 +818,13 @@ impl Render for Crowbar {
                                                                 .child(branch_conversation_button(
                                                                     "+ Branch",
                                                                     move |cx| {
-                                                                        dbg!("Here");
-
-                                                                        let window_handle = cx.window_handle();
-                                                                        let _ = window_handle.update(cx, |_, _| {
-                                                                            // Create new branch from this node
-                                                                            let _ = node.add_child(
+                                                                        let new_node = node
+                                                                            .add_child(
                                                                                 Message::new(
                                                                                     Role::System,
-                                                                                    "Branch",
+                                                                                    "New Branch",
                                                                                 ),
                                                                             );
-
-                                                                       });
-
                                                                     },
                                                                 )),
                                                         ]),
