@@ -1,6 +1,8 @@
-# Crowbar - Native LLM Interface
+<img src="crowbar.png" alt="Crowbar Logo" width="128" height="128">
 
-Supports Ollama, OpenAI, Claude and more.
+# Crowbar - The Launcher Without Friction
+
+An AI-powered Linux launcher in alpha, integrating with Ollama, OpenAI, Claude and more.
 
 ## Roadmap
 
