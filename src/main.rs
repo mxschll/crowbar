@@ -1,8 +1,12 @@
+mod action_item;
+mod action_list;
 mod config;
 mod conversation;
 mod copilot;
 mod executable_finder;
 
+use action_item::{Action, ActionItem};
+use action_list::ActionList;
 use executable_finder::scan_path_executables;
 
 use config::CrowbarConfig;
@@ -587,156 +591,6 @@ impl Render for TextInput {
 impl FocusableView for TextInput {
     fn focus_handle(&self, _: &AppContext) -> FocusHandle {
         self.focus_handle.clone()
-    }
-}
-
-#[derive(Clone)]
-enum Action {
-    OpenProgram { path: String, name: String },
-    SwitchView { view_name: String },
-}
-
-impl Action {
-    fn display_name(&self) -> &str {
-        match self {
-            Action::OpenProgram { name, .. } => name,
-            Action::SwitchView { view_name } => view_name,
-        }
-    }
-
-    fn execute(&self) {
-        match self {
-            Action::OpenProgram { path, .. } => match std::process::Command::new(path).spawn() {
-                Ok(_) => (),
-                Err(e) => eprintln!("Failed to start {}: {}", path, e),
-            },
-            Action::SwitchView { view_name } => {
-                println!("Switching to view: {}", view_name);
-                // Implement view switching logic here
-            }
-        }
-    }
-}
-
-struct ActionItem {
-    name: String,
-    action: Action,
-    is_selected: bool,
-}
-
-impl ActionItem {}
-
-impl Render for ActionItem {
-    fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
-        div()
-            .child(format!("{}", self.name))
-            .px_4()
-            .py_2()
-            .on_mouse_up(MouseButton::Left, {
-                let action = self.action.clone();
-                move |_event, _cx| {
-                    action.execute();
-                }
-            })
-            .when(self.is_selected, |elem| elem.bg(rgb(0x404040)))
-    }
-}
-
-const ITEMS_TO_SHOW: usize = 100;
-
-struct ActionList {
-    items: Vec<ActionItem>,
-    filter: SharedString,
-    selected_index: usize,
-    list_scroll_handle: UniformListScrollHandle,
-}
-
-impl ActionList {
-    fn navigate_up(&mut self, cx: &mut ViewContext<Self>) {
-        if !self.filtered_items().is_empty() {
-            self.selected_index = self
-                .selected_index
-                .checked_sub(1)
-                .unwrap_or(self.filtered_items().len().min(ITEMS_TO_SHOW) - 1);
-
-            self.list_scroll_handle
-                .scroll_to_item(self.selected_index, ScrollStrategy::Top);
-
-            cx.notify();
-        }
-
-        debug!("Selected index is {}", self.selected_index);
-    }
-
-    fn navigate_down(&mut self, cx: &mut ViewContext<Self>) {
-        if !self.filtered_items().is_empty() {
-            self.selected_index =
-                (self.selected_index + 1) % self.filtered_items().len().min(ITEMS_TO_SHOW);
-            self.list_scroll_handle
-                .scroll_to_item(self.selected_index, ScrollStrategy::Top);
-            cx.notify();
-        }
-
-        debug!("Selected index is {}", self.selected_index);
-    }
-
-    fn filtered_items(&self) -> Vec<&ActionItem> {
-        if self.filter.is_empty() {
-            return self.items.iter().collect();
-        }
-
-        self.items
-            .iter()
-            .filter(|item| {
-                item.name
-                    .to_lowercase()
-                    .contains(&self.filter.to_lowercase())
-            })
-            .collect()
-    }
-
-    fn set_filter(&mut self, new_filter: String) {
-        debug!("Setting filter");
-
-        self.filter = new_filter.into();
-        self.selected_index = 0; // Reset selection when filter changes
-    }
-
-    fn get_selected_action(&self) -> Option<Action> {
-        self.filtered_items()
-            .get(self.selected_index)
-            .map(|item| item.action.clone())
-    }
-}
-
-impl Render for ActionList {
-    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
-        div().size_full().child(
-            uniform_list(
-                cx.view().clone(),
-                "action-list",
-                self.filtered_items().len().min(ITEMS_TO_SHOW),
-                |this, range, cx| {
-                    this.filtered_items()
-                        .into_iter()
-                        .skip(range.start)
-                        .take(range.end - range.start)
-                        .enumerate()
-                        .map(|(index, item)| {
-                            let is_selected = index + range.start == this.selected_index;
-                            div()
-                                .id(index + range.start)
-                                .px_4()
-                                .py_2()
-                                .child(item.name.clone())
-                                .when(is_selected, |x| x.bg(rgb(0x404040)))
-                        })
-                        .collect()
-                },
-            )
-            .track_scroll(self.list_scroll_handle.clone())
-            .h_full(),
-        )
     }
 }
 
