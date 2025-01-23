@@ -1,19 +1,19 @@
 <div align="center">
 <img src="crowbar.png" alt="Crowbar Logo" width="128" height="128">
 </div>
-<h1 align="center">Crowbar - The Fastest Launcher<br />
+<h1 align="center">Crowbar - The <i>Fastest</i> Launcher<br />
 <div align="center">
 </div>
 </h1>
 
-An AI-powered Linux launcher in alpha, integrating with Ollama, OpenAI, Claude and more.
+Linux application launcher. Much fast. Much in alpha, so things might break.
 
 ## Roadmap
 
+- [ ] LLM Interface
 - [ ] System prompt configuration
 - [ ] Conversation branching
 - [ ] GitHub action building
 - [ ] Conversation export/import
 - [ ] UI customization
-
 

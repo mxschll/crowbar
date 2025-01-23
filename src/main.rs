@@ -3,30 +3,23 @@ mod conversation;
 mod copilot;
 mod executable_finder;
 
+use executable_finder::scan_path_executables;
+
 use config::CrowbarConfig;
-use conversation::{ConversationNode, Message, Role};
-use copilot::Copilot;
 
-use serde::{Deserialize, Serialize};
-
-use std::borrow::BorrowMut;
-use std::cell::RefCell;
 use std::error::Error;
 use std::ops::Range;
-use std::rc::{Rc, Weak};
-
-use futures::StreamExt;
 
 use gpui::{
     actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, App, AppContext,
-    Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, FocusHandle,
-    FocusableView, GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Style,
-    TextRun, UTF16Selection, UnderlineStyle, View, ViewContext, ViewInputHandler, WindowBounds,
+    Bounds, ClipboardItem, CursorStyle, ElementId, ElementInputHandler, FocusHandle, FocusableView,
+    GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Style, TextRun,
+    UTF16Selection, UnderlineStyle, View, ViewContext, ViewInputHandler, WindowBounds,
     WindowContext, WindowOptions,
 };
 
-use log::{debug, error, info, log_enabled, Level};
+use log::{debug, info};
 
 use unicode_segmentation::*;
 
@@ -47,10 +40,10 @@ actions!(
         Cut,
         Copy,
         Escape,
+        Up,
+        Down,
     ]
 );
-
-use chrono::{DateTime, Utc};
 
 struct TextInput {
     focus_handle: FocusHandle,
@@ -117,6 +110,10 @@ impl TextInput {
     }
 
     fn on_mouse_down(&mut self, event: &MouseDownEvent, cx: &mut ViewContext<Self>) {
+        debug!(
+            "Mouse down at position: {:?}, shift: {}",
+            event.position, event.modifiers.shift
+        );
         self.is_selecting = true;
 
         if event.modifiers.shift {
@@ -257,6 +254,7 @@ impl TextInput {
     }
 
     fn reset(&mut self) {
+        debug!("Resetting text input state");
         self.content = "".into();
         self.selected_range = 0..0;
         self.selection_reversed = false;
@@ -311,6 +309,13 @@ impl ViewInputHandler for TextInput {
             .map(|range_utf16| self.range_from_utf16(range_utf16))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
+
+        debug!(
+            "Replacing text in range {:?} with '{}' (length: {})",
+            range,
+            new_text,
+            new_text.len()
+        );
 
         self.content =
             (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
@@ -584,13 +589,146 @@ impl FocusableView for TextInput {
     }
 }
 
+#[derive(Clone)]
+enum Action {
+    OpenProgram { path: String, name: String },
+    SwitchView { view_name: String },
+}
+
+impl Action {
+    fn display_name(&self) -> &str {
+        match self {
+            Action::OpenProgram { name, .. } => name,
+            Action::SwitchView { view_name } => view_name,
+        }
+    }
+
+    fn execute(&self) {
+        match self {
+            Action::OpenProgram { path, .. } => match std::process::Command::new(path).spawn() {
+                Ok(_) => (),
+                Err(e) => eprintln!("Failed to start {}: {}", path, e),
+            },
+            Action::SwitchView { view_name } => {
+                println!("Switching to view: {}", view_name);
+                // Implement view switching logic here
+            }
+        }
+    }
+}
+
+struct ActionItem {
+    name: String,
+    action: Action,
+    is_selected: bool,
+}
+
+impl ActionItem {}
+
+impl Render for ActionItem {
+    fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
+        let base = div()
+            .child(format!("{}", self.name))
+            .px_2()
+            .py_1()
+            .on_mouse_up(MouseButton::Left, {
+                let action = self.action.clone();
+                move |_event, _cx| {
+                    action.execute();
+                }
+            });
+
+        if self.is_selected {
+            base.bg(rgb(0x404040))
+        } else {
+            base.hover(|s| s.bg(rgb(0x404040)))
+        }
+    }
+}
+
+struct ActionList {
+    items: Vec<ActionItem>,
+    filter: SharedString,
+    selected_index: usize,
+}
+
+impl ActionList {
+    fn navigate_up(&mut self, cx: &mut ViewContext<Self>) {
+        if !self.filtered_items().is_empty() {
+            self.selected_index = self
+                .selected_index
+                .checked_sub(1)
+                .unwrap_or(self.filtered_items().len() - 1);
+            cx.notify();
+        }
+
+        debug!("Selected index is {}", self.selected_index);
+    }
+
+    fn navigate_down(&mut self, cx: &mut ViewContext<Self>) {
+        if !self.filtered_items().is_empty() {
+            self.selected_index = (self.selected_index + 1) % self.filtered_items().len();
+            cx.notify();
+        }
+
+        debug!("Selected index is {}", self.selected_index);
+    }
+
+    fn filtered_items(&self) -> Vec<&ActionItem> {
+        if self.filter.is_empty() {
+            return self.items.iter().collect();
+        }
+
+        self.items
+            .iter()
+            .filter(|item| {
+                item.name
+                    .to_lowercase()
+                    .contains(&self.filter.to_lowercase())
+            })
+            .collect()
+    }
+
+    fn set_filter(&mut self, new_filter: String) {
+        debug!("Setting filter");
+
+        self.filter = new_filter.into();
+        self.selected_index = 0; // Reset selection when filter changes
+    }
+
+    fn get_selected_action(&self) -> Option<Action> {
+        self.filtered_items()
+            .get(self.selected_index)
+            .map(|item| item.action.clone())
+    }
+}
+
+impl Render for ActionList {
+    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+        div()
+            .id("action-list")
+            .overflow_y_scroll()
+            .size_full()
+            .flex()
+            .flex_col()
+            .children(self.filtered_items().into_iter().take(10).enumerate().map(
+                |(index, executable)| {
+                    let is_selected = index == self.selected_index;
+                    cx.new_view(|_cx| ActionItem {
+                        name: executable.name.clone(),
+                        action: executable.action.clone(),
+                        is_selected,
+                    })
+                },
+            ))
+    }
+}
 struct Crowbar {
     crowbar_config: CrowbarConfig,
     text_input: View<TextInput>,
+    action_list: View<ActionList>,
     recent_keystrokes: Vec<Keystroke>,
     focus_handle: FocusHandle,
-    conversation_tree: Rc<ConversationNode>,
-    active_node: Rc<ConversationNode>,
 }
 
 impl FocusableView for Crowbar {
@@ -599,77 +737,35 @@ impl FocusableView for Crowbar {
     }
 }
 
-fn branch_conversation_button(
-    text: &str,
-    on_click: impl Fn(&mut WindowContext) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(SharedString::from(text.to_string()))
-        .flex_none()
-        .active(|this| this.opacity(0.85))
-        .cursor_pointer()
-        .child(text.to_string())
-        .on_click(move |_, cx| on_click(cx))
-}
-
 impl Crowbar {
+    fn navigate_up(&mut self, _: &Up, cx: &mut ViewContext<Self>) {
+        debug!("Navigating up");
+        self.action_list.update(cx, |list, cx| {
+            list.navigate_up(cx);
+        });
+    }
+
+    fn navigate_down(&mut self, _: &Down, cx: &mut ViewContext<Self>) {
+        debug!("Navigating down");
+        self.action_list.update(cx, |list, cx| {
+            list.navigate_down(cx);
+        });
+    }
+
     fn escape(&mut self, _: &Escape, cx: &mut ViewContext<Self>) {
+        info!("Escape pressed, quitting application");
         cx.quit();
     }
 
-    // Send request to LLM
     fn handle_enter(&mut self, _: &Enter, cx: &mut ViewContext<Self>) {
-        let content = self.text_input.read(cx).content.to_string();
-        self.text_input.update(cx, |input, _cx| {
-            input.reset();
-        });
+        if let Some(action) = self.action_list.read(cx).get_selected_action() {
+            action.execute();
+            self.text_input.update(cx, |input, _cx| {
+                input.reset();
+            });
 
-        self.active_node = self
-            .active_node
-            .add_child(Message::new(Role::User, &content));
-
-        let _ = cx
-            .spawn(|view, mut cx| {
-                let copilot_provider = match &self.crowbar_config.copilot_options.provider {
-                    Some(provider) => provider.clone(),
-                    None => copilot::Provider::Ollama,
-                };
-
-                let copilot_api_key = match &self.crowbar_config.copilot_options.api_key {
-                    Some(provider) => provider.clone(),
-                    None => "".to_string(),
-                };
-
-                let copilot_model = match &self.crowbar_config.copilot_options.model {
-                    Some(provider) => provider.clone(),
-                    None => "".to_string(),
-                };
-
-                let ai = Copilot::new(copilot_provider, copilot_api_key, copilot_model).unwrap();
-
-                let conversation =
-                    serde_json::to_string(&self.active_node.get_conversation_context()).unwrap();
-
-                self.active_node = self
-                    .active_node
-                    .add_child(Message::new(Role::Assistant, ""));
-
-                async move {
-                    let mut stream = ai.stream_chat(&conversation).await.unwrap();
-
-                    // Process the response as it comes in
-                    while let Some(chunk) = stream.next().await {
-                        // dbg!(&chunk);
-                        let _ = view.update(&mut cx, |view, cx| {
-                            view.active_node
-                                .borrow_message_mut()
-                                .append_message_content(&chunk.unwrap());
-                            cx.notify();
-                        });
-                    }
-                }
-            })
-            .detach();
+            cx.quit();
+        }
     }
 }
 
@@ -680,169 +776,30 @@ impl Render for Crowbar {
             .track_focus(&self.focus_handle(cx)) // Required for .on_action to work
             .on_action(cx.listener(Self::handle_enter))
             .on_action(cx.listener(Self::escape))
+            .on_action(cx.listener(Self::navigate_up))
+            .on_action(cx.listener(Self::navigate_down))
             .font_family("CaskaydiaMono Nerd Font")
             .bg(rgb(0x141D21))
             .text_color(rgb(0xA4FBFE))
             .flex()
             .flex_col()
             .size_full()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .size_full()
-                    // Sidebar
-                    .child(
-                        div()
-                            .id("sidebar")
-                            .overflow_y_scroll()
-                            .w_1_4()
-                            .h_full()
-                            .border_r_1()
-                            .border_color(rgb(0x3B4B4F))
-                            .p_2()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .children({
-                                let mut elements = vec![
-                                    // Main conversation root
-                                    div()
-                                        .hover(|s| s.bg(rgba(0xffffff11)))
-                                        .cursor_pointer()
-                                        .child("Main Thread"),
-                                ];
-
-                                // Add branch nodes and their children
-                                let branch_nodes = self.conversation_tree.get_branching_points();
-
-                                for branch_node in branch_nodes {
-                                    let node_content = branch_node.borrow_message().get_content();
-                                    let depth = branch_node.get_depth();
-
-                                    // Add the branch node
-                                    elements.push(
-                                        div()
-                                            .pl(px(depth as f32 * 12.0))
-                                            .hover(|s| s.bg(rgba(0xffffff11)))
-                                            .cursor_pointer()
-                                            .child(
-                                                div().flex().flex_row().items_center().children(
-                                                    vec![
-                                                        div().text_color(rgb(0x3B4B4F)).child("└─"),
-                                                        div().child(if node_content.len() > 30 {
-                                                            format!("{}...", &node_content[..30])
-                                                        } else {
-                                                            node_content
-                                                        }),
-                                                    ],
-                                                ),
-                                            ),
-                                    );
-
-                                    let children = branch_node.get_children_ref();
-                                    // Add all children of this branch node
-                                    for child in children.borrow().iter() {
-                                        let child_content = child.borrow_message().get_content();
-                                        elements.push(
-                                            div()
-                                                .pl(px((depth + 1) as f32 * 12.0))
-                                                .hover(|s| s.bg(rgba(0xffffff11)))
-                                                .cursor_pointer()
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .flex_row()
-                                                        .items_center()
-                                                        .children(vec![
-                                                            div()
-                                                                .text_color(rgb(0x3B4B4F))
-                                                                .child("├─"),
-                                                            div().child(
-                                                                if child_content.len() > 30 {
-                                                                    format!(
-                                                                        "{}...",
-                                                                        &child_content[..30]
-                                                                    )
-                                                                } else {
-                                                                    child_content
-                                                                },
-                                                            ),
-                                                        ]),
-                                                ),
-                                        );
-                                    }
-                                }
-
-                                elements
-                            }),
-                    )
-                    // Input
-                    .child(
-                        div()
-                            .w_3_4()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .id("conversation-container")
-                                    .flex()
-                                    .flex_col()
-                                    .size_full()
-                                    .overflow_y_scroll()
-                                    .child(div().gap_2().p_4().children(
-                                        self.active_node.get_parent_nodes().into_iter().map(
-                                            |node| {
-                                                let message_role =
-                                                    node.borrow_message().get_role().to_string();
-                                                let message_content =
-                                                    node.borrow_message().get_content().clone();
-
-                                                div().mb_4().children(vec![
-                                                    div()
-                                                        .flex()
-                                                        .flex_row()
-                                                        .justify_between()
-                                                        .items_center()
-                                                        .children(vec![
-                                                            div()
-                                                                .text_color(rgb(0xDD513C))
-                                                                .child(message_role),
-                                                            div()
-                                                                .cursor_pointer()
-                                                                .hover(|s| {
-                                                                    s.text_color(rgb(0xffffff))
-                                                                })
-                                                                .text_color(rgba(0xffffff88))
-                                                                .px_2()
-                                                                .child(branch_conversation_button(
-                                                                    "+ Branch",
-                                                                    move |cx| {
-                                                                        let new_node = node
-                                                                            .add_child(
-                                                                                Message::new(
-                                                                                    Role::System,
-                                                                                    "New Branch",
-                                                                                ),
-                                                                            );
-                                                                    },
-                                                                )),
-                                                        ]),
-                                                    div().child(message_content.to_string()),
-                                                ])
-                                            },
-                                        ),
-                                    )),
-                            )
-                            .child(self.text_input.clone()),
-                    ),
-            )
+            .child(self.action_list.clone())
+            .child(div().mt_auto().child(self.text_input.clone()))
     }
 }
 
+/// Sets up required folders at:
+/// ~/.local/share/crowbar/
+/// ~/.config/crowbar/
+/// And initializes config
+fn setup() {}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::init();
+    env_logger::builder().init();
+
+    info!("Starting Crowbar application");
 
     let crowbar_config = config::load();
 
@@ -863,6 +820,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             KeyBinding::new("home", Home, None),
             KeyBinding::new("end", End, None),
             KeyBinding::new("escape", Escape, None),
+            KeyBinding::new("up", Up, None),
+            KeyBinding::new("ctrl-k", Up, None),
+            KeyBinding::new("down", Down, None),
+            KeyBinding::new("ctrl-j", Down, None),
         ]);
 
         let window = cx
@@ -872,6 +833,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     ..Default::default()
                 },
                 |cx| {
+                    info!("Scanning for path executables");
+                    let executables = scan_path_executables().unwrap_or_default();
+                    info!("Found {} path executables", executables.len());
+
                     let text_input = cx.new_view(|cx| TextInput {
                         focus_handle: cx.focus_handle(),
                         content: "".into(),
@@ -884,19 +849,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         is_selecting: false,
                     });
 
-                    let conversation_tree = ConversationNode::new(Message::new(
-                        Role::System,
-                        "You are a helpful assistant. Answer in plaintext.",
-                    ));
+                    let action_items = executables
+                        .iter()
+                        .map(|x| ActionItem {
+                            name: x.name.clone(),
+                            action: Action::OpenProgram {
+                                path: (x.path.to_str().unwrap().to_string()),
+                                name: x.name.clone(),
+                            },
+                            is_selected: false,
+                        })
+                        .collect();
+
+                    let action_list = cx.new_view(|_cx| ActionList {
+                        items: action_items,
+                        filter: "".into(),
+                        selected_index: 0,
+                    });
 
                     let crowbar = cx.new_view(|cx| {
                         let crowbar = Crowbar {
                             crowbar_config,
                             text_input: text_input.clone(),
+                            action_list: action_list.clone(),
                             recent_keystrokes: vec![],
                             focus_handle: cx.focus_handle(),
-                            active_node: conversation_tree.clone(),
-                            conversation_tree,
                         };
 
                         crowbar
@@ -908,9 +885,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
 
         cx.observe_keystrokes(move |ev, cx| {
+            // Skip filter updates for navigation keys
+            dbg!(&ev.keystroke);
+
+            if matches!(
+                ev.keystroke.key.as_str(),
+                "up" | "down" | "left" | "right" | "home" | "end"
+            ) {
+                return;
+            }
+
+            if ev.keystroke.modifiers.control {
+                return;
+            }
+
             window
                 .update(cx, |view, cx| {
                     view.recent_keystrokes.push(ev.keystroke.clone());
+
+                    let filter_text = view.text_input.read(cx).content.clone();
+
+                    view.action_list.update(cx, |this, cx| {
+                        this.set_filter(filter_text.to_string());
+                    });
+
                     cx.notify();
                 })
                 .unwrap();
