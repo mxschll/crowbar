@@ -11,12 +11,13 @@ use std::error::Error;
 use std::ops::Range;
 
 use gpui::{
-    actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, App, AppContext,
-    Bounds, ClipboardItem, CursorStyle, ElementId, ElementInputHandler, FocusHandle, FocusableView,
-    GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Style, TextRun,
-    UTF16Selection, UnderlineStyle, View, ViewContext, ViewInputHandler, WindowBounds,
-    WindowContext, WindowOptions,
+    actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, uniform_list, App,
+    AppContext, Bounds, ClipboardItem, CursorStyle, Div, ElementId, ElementInputHandler,
+    FocusHandle, FocusableView, GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ScrollStrategy,
+    ShapedLine, SharedString, Stateful, Style, TextRun, UTF16Selection, UnderlineStyle,
+    UniformListScrollHandle, View, ViewContext, ViewInputHandler, WindowBounds, WindowContext,
+    WindowOptions,
 };
 
 use log::{debug, info};
@@ -479,7 +480,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    gpui::blue(),
+                    hsla(1., 1., 1., 0.2),
                 )),
             )
         } else {
@@ -627,29 +628,27 @@ impl ActionItem {}
 
 impl Render for ActionItem {
     fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
-        let base = div()
+        div()
             .child(format!("{}", self.name))
-            .px_2()
-            .py_1()
+            .px_4()
+            .py_2()
             .on_mouse_up(MouseButton::Left, {
                 let action = self.action.clone();
                 move |_event, _cx| {
                     action.execute();
                 }
-            });
-
-        if self.is_selected {
-            base.bg(rgb(0x404040))
-        } else {
-            base.hover(|s| s.bg(rgb(0x404040)))
-        }
+            })
+            .when(self.is_selected, |elem| elem.bg(rgb(0x404040)))
     }
 }
+
+const ITEMS_TO_SHOW: usize = 100;
 
 struct ActionList {
     items: Vec<ActionItem>,
     filter: SharedString,
     selected_index: usize,
+    list_scroll_handle: UniformListScrollHandle,
 }
 
 impl ActionList {
@@ -658,7 +657,11 @@ impl ActionList {
             self.selected_index = self
                 .selected_index
                 .checked_sub(1)
-                .unwrap_or(self.filtered_items().len() - 1);
+                .unwrap_or(self.filtered_items().len().min(ITEMS_TO_SHOW) - 1);
+
+            self.list_scroll_handle
+                .scroll_to_item(self.selected_index, ScrollStrategy::Top);
+
             cx.notify();
         }
 
@@ -667,7 +670,10 @@ impl ActionList {
 
     fn navigate_down(&mut self, cx: &mut ViewContext<Self>) {
         if !self.filtered_items().is_empty() {
-            self.selected_index = (self.selected_index + 1) % self.filtered_items().len();
+            self.selected_index =
+                (self.selected_index + 1) % self.filtered_items().len().min(ITEMS_TO_SHOW);
+            self.list_scroll_handle
+                .scroll_to_item(self.selected_index, ScrollStrategy::Top);
             cx.notify();
         }
 
@@ -705,24 +711,35 @@ impl ActionList {
 
 impl Render for ActionList {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
-        div()
-            .id("action-list")
-            .overflow_y_scroll()
-            .size_full()
-            .flex()
-            .flex_col()
-            .children(self.filtered_items().into_iter().take(10).enumerate().map(
-                |(index, executable)| {
-                    let is_selected = index == self.selected_index;
-                    cx.new_view(|_cx| ActionItem {
-                        name: executable.name.clone(),
-                        action: executable.action.clone(),
-                        is_selected,
-                    })
+        div().size_full().child(
+            uniform_list(
+                cx.view().clone(),
+                "action-list",
+                self.filtered_items().len().min(ITEMS_TO_SHOW),
+                |this, range, cx| {
+                    this.filtered_items()
+                        .into_iter()
+                        .skip(range.start)
+                        .take(range.end - range.start)
+                        .enumerate()
+                        .map(|(index, item)| {
+                            let is_selected = index + range.start == this.selected_index;
+                            div()
+                                .id(index + range.start)
+                                .px_4()
+                                .py_2()
+                                .child(item.name.clone())
+                                .when(is_selected, |x| x.bg(rgb(0x404040)))
+                        })
+                        .collect()
                 },
-            ))
+            )
+            .track_scroll(self.list_scroll_handle.clone())
+            .h_full(),
+        )
     }
 }
+
 struct Crowbar {
     crowbar_config: CrowbarConfig,
     text_input: View<TextInput>,
@@ -804,7 +821,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let crowbar_config = config::load();
 
     App::new().run(|cx: &mut AppContext| {
-        let bounds = Bounds::centered(None, size(px(800.0), px(500.0)), cx);
+        let bounds = Bounds::centered(None, size(px(800.0), px(400.0)), cx);
         cx.bind_keys([
             KeyBinding::new("enter", Enter, None),
             KeyBinding::new("backspace", Backspace, None),
@@ -822,8 +839,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             KeyBinding::new("escape", Escape, None),
             KeyBinding::new("up", Up, None),
             KeyBinding::new("ctrl-k", Up, None),
+            KeyBinding::new("ctrl-p", Up, None),
             KeyBinding::new("down", Down, None),
             KeyBinding::new("ctrl-j", Down, None),
+            KeyBinding::new("ctrl-n", Down, None),
         ]);
 
         let window = cx
@@ -865,6 +884,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         items: action_items,
                         filter: "".into(),
                         selected_index: 0,
+                        list_scroll_handle: UniformListScrollHandle::new(),
                     });
 
                     let crowbar = cx.new_view(|cx| {
