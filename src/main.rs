@@ -1,8 +1,6 @@
 mod action_item;
 mod action_list;
 mod config;
-mod conversation;
-mod copilot;
 mod executable_finder;
 
 use action_item::{Action, ActionItem};
