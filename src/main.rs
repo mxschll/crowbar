@@ -15,13 +15,12 @@ use std::error::Error;
 use std::ops::Range;
 
 use gpui::{
-    actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, uniform_list, App,
-    AppContext, Bounds, ClipboardItem, CursorStyle, Div, ElementId, ElementInputHandler,
+    actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, App, AppContext,
+    Bounds, ClipboardItem, CursorStyle, Div, ElementId, ElementInputHandler, EventEmitter,
     FocusHandle, FocusableView, GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ScrollStrategy,
-    ShapedLine, SharedString, Stateful, Style, TextRun, UTF16Selection, UnderlineStyle,
-    UniformListScrollHandle, View, ViewContext, ViewInputHandler, WindowBounds, WindowContext,
-    WindowOptions,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine,
+    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, UniformListScrollHandle, View,
+    ViewContext, ViewInputHandler, WindowBounds, WindowContext, WindowOptions,
 };
 
 use log::{debug, info};
@@ -270,6 +269,13 @@ impl TextInput {
     }
 }
 
+struct TextInputChange {
+    change: SharedString,
+    content: SharedString,
+}
+
+impl EventEmitter<TextInputChange> for TextInput {}
+
 impl ViewInputHandler for TextInput {
     fn text_for_range(
         &mut self,
@@ -327,6 +333,12 @@ impl ViewInputHandler for TextInput {
                 .into();
         self.selected_range = range.start + new_text.len()..range.start + new_text.len();
         self.marked_range.take();
+
+        cx.emit(TextInputChange {
+            change: new_text.to_string().into(),
+            content: self.content.clone(),
+        });
+
         cx.notify();
     }
 
@@ -598,7 +610,6 @@ struct Crowbar {
     crowbar_config: CrowbarConfig,
     text_input: View<TextInput>,
     action_list: View<ActionList>,
-    recent_keystrokes: Vec<Keystroke>,
     focus_handle: FocusHandle,
 }
 
@@ -746,48 +757,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             crowbar_config,
                             text_input: text_input.clone(),
                             action_list: action_list.clone(),
-                            recent_keystrokes: vec![],
                             focus_handle: cx.focus_handle(),
                         };
 
                         crowbar
                     });
 
+                    cx.subscribe(&text_input, move |_view, event, cx| {
+                        action_list.clone().update(cx, |this, cx| {
+                            this.set_filter(event.content.to_string());
+                            cx.notify();
+                        });
+                    })
+                    .detach();
+
                     crowbar
                 },
             )
             .unwrap();
-
-        cx.observe_keystrokes(move |ev, cx| {
-            // Skip filter updates for navigation keys
-            dbg!(&ev.keystroke);
-
-            if matches!(
-                ev.keystroke.key.as_str(),
-                "up" | "down" | "left" | "right" | "home" | "end"
-            ) {
-                return;
-            }
-
-            if ev.keystroke.modifiers.control {
-                return;
-            }
-
-            window
-                .update(cx, |view, cx| {
-                    view.recent_keystrokes.push(ev.keystroke.clone());
-
-                    let filter_text = view.text_input.read(cx).content.clone();
-
-                    view.action_list.update(cx, |this, cx| {
-                        this.set_filter(filter_text.to_string());
-                    });
-
-                    cx.notify();
-                })
-                .unwrap();
-        })
-        .detach();
 
         cx.on_keyboard_layout_change({
             move |cx| {
