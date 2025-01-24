@@ -15,10 +15,13 @@ jobs:
     steps:    
     - uses: actions/checkout@v4
     
-    - name: Install build dependencies
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential gcc cmake
+        sudo apt-get install -y build-essential
+        sudo apt-get install -y libxcb-dev
+        sudo apt-get install -y libxkbcommon-dev
+        sudo apt-get install -y libxkbcommon-x11-dev
         
     - name: Setup Rust
       run: rustup update
