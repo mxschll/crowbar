@@ -19,9 +19,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential
-        sudo apt-get install -y libxcb-dev
-        sudo apt-get install -y libxkbcommon-dev
-        sudo apt-get install -y libxkbcommon-x11-dev
+        sudo apt-get install -y libxcb1-dev libxcb-cursor-dev libxcb-xkb-dev libxcb-xinerama0-dev libxcb-randr0-dev
         
     - name: Setup Rust
       run: rustup update
