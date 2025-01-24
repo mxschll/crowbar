@@ -8,6 +8,8 @@
 
 Linux application launcher. Much fast. Much in alpha, so things might break.
 
+![](https://github.com/mxschll/crowbar/blob/main/demo.gif)
+
 ## Installation & Setup
 
 These instructions are written for Ubuntu, but should apply to most Linux
