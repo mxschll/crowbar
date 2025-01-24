@@ -18,8 +18,29 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential
-        sudo apt-get install -y libxcb1-dev libxcb-cursor-dev libxcb-xkb-dev libxcb-xinerama0-dev libxcb-randr0-dev
+        sudo apt-get install -y \
+          gcc \
+          g++ \
+          libasound2-dev \
+          libfontconfig-dev \
+          libwayland-dev \
+          libxkbcommon-x11-dev \
+          libssl-dev \
+          libzstd-dev \
+          libvulkan1 \
+          libgit2-dev \
+          make \
+          cmake \
+          clang \
+          jq \
+          netcat-openbsd \
+          git \
+          curl \
+          gettext-base \
+          elfutils \
+          libsqlite3-dev \
+          musl-tools \
+          musl-dev
         
     - name: Setup Rust
       run: rustup update
