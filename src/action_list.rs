@@ -39,6 +39,26 @@ impl ActionList {
         }
     }
 
+    fn is_fuzzy_match(pattern: &str, text: &str) -> bool {
+        let pattern = pattern.to_lowercase();
+        let text = text.to_lowercase();
+
+        let pattern_chars: Vec<char> = pattern.chars().collect();
+        let text_chars: Vec<char> = text.chars().collect();
+
+        let mut pattern_idx = 0;
+        let mut text_idx = 0;
+
+        while pattern_idx < pattern_chars.len() && text_idx < text_chars.len() {
+            if pattern_chars[pattern_idx] == text_chars[text_idx] {
+                pattern_idx += 1;
+            }
+            text_idx += 1;
+        }
+
+        pattern_idx == pattern_chars.len()
+    }
+
     fn filtered_items(&self) -> Vec<&ActionItem> {
         if self.filter.is_empty() {
             return self.items.iter().collect();
@@ -46,11 +66,7 @@ impl ActionList {
 
         self.items
             .iter()
-            .filter(|item| {
-                item.name
-                    .to_lowercase()
-                    .contains(&self.filter.to_lowercase())
-            })
+            .filter(|item| Self::is_fuzzy_match(&self.filter, &item.name))
             .collect()
     }
 
