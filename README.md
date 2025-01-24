@@ -43,11 +43,24 @@ Now you can launch Crowbar anytime by pressing your chosen keyboard shortcut!
 > Note: Make sure to use the absolute path in the command field. For example, if your username is "john", 
 > the command should be `/home/john/.local/bin/crowbar`
 
+## Navigation
+
+### Keyboard Controls
+
+| Action | Keys |
+|--------|------|
+| Open Launcher | User-configured shortcut |
+| Close | `Escape` |
+| Navigate Down | `↓` or `Ctrl+N` or `Ctrl+J` |
+| Navigate Up | `↑` or `Ctrl+P` or `Ctrl+K` |
+
 ## Configuration
 
 Crowbar can be configured through a TOML file located at
 `~/.config/crowbar/crowbar.config`. The configuration file will be
 automatically created with default values on first run.
+
+
 
 ### Available Options
 
