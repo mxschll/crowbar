@@ -46,7 +46,7 @@ jobs:
       run: rustup update
       
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --release
       
     - name: Run tests
       run: cargo test --verbose
