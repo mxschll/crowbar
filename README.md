@@ -43,3 +43,40 @@ Now you can launch Crowbar anytime by pressing your chosen keyboard shortcut!
 > Note: Make sure to use the absolute path in the command field. For example, if your username is "john", 
 > the command should be `/home/john/.local/bin/crowbar`
 
+## Configuration
+
+Crowbar can be configured through a TOML file located at
+`~/.config/crowbar/crowbar.config`. The configuration file will be
+automatically created with default values on first run.
+
+### Available Options
+
+```toml
+# Window dimensions (in pixels)
+window_width = 800.0
+window_heigth = 400.0
+
+# Font settings
+font_family = "Liberation Mono"
+font_size = 12.0
+
+# Colors (in hex format)
+background = "#c5c8c6"            # Main background color
+foreground = "#1d1f21"            # Main text color
+selection_foreground = "#ffffff"   # Selected text color
+selection_background = "#373b41"   # Selection highlight color
+border_color = "#81a2be"          # Inactive window border
+active_border_color = "#373b41"   # Active window border
+```
+
+All colors must be specified in hex format with a leading `#` followed by
+exactly 6 characters (e.g., "#c5c8c6"). The colors support standard RGB hex
+values.
+
+The `font_family` setting accepts any font name installed on your system. Make
+sure the specified font is installed and supports monospace rendering for best
+results.
+
+If the configuration file becomes corrupted or contains invalid values, Crowbar
+will automatically reset it to default values.
+

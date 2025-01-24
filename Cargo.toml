@@ -16,6 +16,7 @@ tokio = { version = "1.42.0", features = ["full"] }
 unicode-segmentation = "1.12.0"
 
 gpui = { git = "https://github.com/zed-industries/zed" }
+toml = "0.8.19"
 
 [profile.dev]
 opt-level = 0

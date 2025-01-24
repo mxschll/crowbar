@@ -1,5 +1,6 @@
 mod action_item;
 mod action_list;
+mod app_finder;
 mod config;
 mod executable_finder;
 
@@ -7,18 +8,18 @@ use action_item::{Action, ActionItem};
 use action_list::ActionList;
 use executable_finder::scan_path_executables;
 
-use config::CrowbarConfig;
+use config::Config;
 
 use std::error::Error;
 use std::ops::Range;
 
 use gpui::{
     actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, App, AppContext,
-    Bounds, ClipboardItem, CursorStyle, Div, ElementId, ElementInputHandler, EventEmitter,
-    FocusHandle, FocusableView, GlobalElementId, KeyBinding, Keystroke, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine,
-    SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, UniformListScrollHandle, View,
-    ViewContext, ViewInputHandler, WindowBounds, WindowContext, WindowOptions,
+    Bounds, ClipboardItem, CursorStyle, ElementId, ElementInputHandler, EventEmitter, FocusHandle,
+    FocusableView, GlobalElementId, KeyBinding, LayoutId, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Size, Style,
+    TextRun, UTF16Selection, UnderlineStyle, UniformListScrollHandle, View, ViewContext,
+    ViewInputHandler, WindowBounds, WindowContext, WindowOptions,
 };
 
 use log::{debug, info};
@@ -580,7 +581,6 @@ impl Render for TextInput {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .line_height(px(30.))
-            .text_size(px(16.))
             .child(
                 div()
                     .h(px(30. + 8. * 2.))
@@ -605,7 +605,7 @@ impl FocusableView for TextInput {
 }
 
 struct Crowbar {
-    crowbar_config: CrowbarConfig,
+    config: Config,
     text_input: View<TextInput>,
     action_list: View<ActionList>,
     focus_handle: FocusHandle,
@@ -653,12 +653,13 @@ impl Render for Crowbar {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         div()
             .id("crowbar")
-            .track_focus(&self.focus_handle(cx)) // Required for .on_action to work
+            .text_size(px(self.config.font_size))
+            .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::handle_enter))
             .on_action(cx.listener(Self::escape))
             .on_action(cx.listener(Self::navigate_up))
             .on_action(cx.listener(Self::navigate_down))
-            .font_family("CaskaydiaMono Nerd Font")
+            .font_family(self.config.font_family.clone())
             .bg(rgb(0x141D21))
             .text_color(rgb(0xA4FBFE))
             .flex()
@@ -669,22 +670,22 @@ impl Render for Crowbar {
     }
 }
 
-/// Sets up required folders at:
-/// ~/.local/share/crowbar/
-/// ~/.config/crowbar/
-/// And initializes config
-fn setup() {}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().init();
 
     info!("Starting Crowbar application");
 
-    let crowbar_config = config::load();
+    let config = Config::load().unwrap();
 
     App::new().run(|cx: &mut AppContext| {
-        let bounds = Bounds::centered(None, size(px(800.0), px(400.0)), cx);
+        let size = Size {
+            width: px(config.window_width),
+            height: px(config.window_heigth),
+        };
+
+        let bounds = Bounds::centered(None, size, cx);
+
         cx.bind_keys([
             KeyBinding::new("enter", Enter, None),
             KeyBinding::new("backspace", Backspace, None),
@@ -752,7 +753,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     let crowbar = cx.new_view(|cx| {
                         let crowbar = Crowbar {
-                            crowbar_config,
+                            config,
                             text_input: text_input.clone(),
                             action_list: action_list.clone(),
                             focus_handle: cx.focus_handle(),
