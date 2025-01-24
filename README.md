@@ -58,13 +58,13 @@ window_heigth = 400.0
 
 # Font settings
 font_family = "Liberation Mono"
-font_size = 12.0
+font_size = 16.0
 
 # Colors (in hex format)
 background = "#c5c8c6"            # Main background color
 foreground = "#1d1f21"            # Main text color
-selection_foreground = "#ffffff"   # Selected text color
-selection_background = "#373b41"   # Selection highlight color
+selection_foreground = "#ffffff"  # Selected text color
+selection_background = "#373b41"  # Selection highlight color
 border_color = "#81a2be"          # Inactive window border
 active_border_color = "#373b41"   # Active window border
 ```

@@ -31,7 +31,7 @@ impl Default for Config {
             window_width: 800.,
             window_heigth: 400.,
             font_family: String::from("Liberation Mono"),
-            font_size: 12.0,
+            font_size: 16.0,
             background: String::from("#c5c8c6"),
             foreground: String::from("#1d1f21"),
             selection_foreground: String::from("#ffffff"),
