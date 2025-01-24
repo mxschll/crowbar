@@ -60,7 +60,7 @@ window_heigth = 400.0
 font_family = "Liberation Mono"
 font_size = 16.0
 
-# Colors (in hex format)
+# NOT IMPLEMENTED YET Colors (in hex format) [
 background = "#c5c8c6"            # Main background color
 foreground = "#1d1f21"            # Main text color
 selection_foreground = "#ffffff"  # Selected text color
