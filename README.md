@@ -8,7 +8,7 @@
 
 Linux application launcher. Much fast. Much in alpha, so things might break.
 
-![](https://github.com/mxschll/crowbar/blob/main/demo.mp4)
+![](./screenshot.png)
 
 ## Installation & Setup
 
