@@ -1,12 +1,14 @@
 <div align="center">
 <img src="crowbar.png" alt="Crowbar Logo" width="128" height="128">
 </div>
-<h1 align="center">Crowbar - The <i>Fastest</i> Launcher<br />
+<h1 align="center">Crowbar</h1>
+<p align="center"><i>A fast, minimal and smart application launcher for Linux</i></p>
 <div align="center">
 </div>
 </h1>
 
-Linux application launcher. Much fast. Much in alpha, so things might break.
+Created out of love for dmenu's simplicity, but built for modern Wayland
+systems (especially Ubuntu) where dmenu can be buggy.
 
 ![](./screenshot.png)
 
@@ -61,8 +63,8 @@ Now you can launch Crowbar anytime by pressing your chosen keyboard shortcut!
 |--------|------|
 | Open Launcher | User-configured shortcut |
 | Close | `Escape` |
-| Navigate Down | `↓` or `Ctrl+N` or `Ctrl+J` |
-| Navigate Up | `↑` or `Ctrl+P` or `Ctrl+K` |
+| Navigate Down | `↓` or `Ctrl+N` or `Ctrl+J` or `Tab` |
+| Navigate Up | `↑` or `Ctrl+P` or `Ctrl+K` or `Ctrl+Tab` |
 
 ## Configuration
 
