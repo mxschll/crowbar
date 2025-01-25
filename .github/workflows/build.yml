@@ -1,0 +1,60 @@
+name: Build Release
+
+on:
+  release:
+    types: [created]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:    
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc \
+          g++ \
+          libasound2-dev \
+          libfontconfig-dev \
+          libwayland-dev \
+          libxkbcommon-x11-dev \
+          libssl-dev \
+          libzstd-dev \
+          libvulkan1 \
+          libgit2-dev \
+          make \
+          cmake \
+          clang \
+          jq \
+          netcat-openbsd \
+          git \
+          curl \
+          gettext-base \
+          elfutils \
+          libsqlite3-dev \
+          musl-tools \
+          musl-dev
+        
+    - name: Setup Rust
+      run: rustup update
+      
+    - name: Build
+      run: cargo build --verbose --release
+      
+    - name: Run tests
+      run: cargo test --verbose
+      
+    - name: Create Archive
+      run: |
+        cd target/release
+        zip crowbar-linux-x86_64.zip crowbar
+        
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        files: target/release/crowbar-linux-x86_64.zip
