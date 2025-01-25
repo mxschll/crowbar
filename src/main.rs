@@ -1,11 +1,10 @@
-mod action_item;
 mod action_list;
 mod app_finder;
 mod config;
+mod database;
 mod executable_finder;
 
-use action_item::{Action, ActionItem};
-use action_list::ActionList;
+use action_list::ActionListView;
 use executable_finder::scan_path_executables;
 
 use config::Config;
@@ -18,8 +17,8 @@ use gpui::{
     Bounds, ClipboardItem, CursorStyle, ElementId, ElementInputHandler, EventEmitter, FocusHandle,
     FocusableView, GlobalElementId, KeyBinding, LayoutId, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine, SharedString, Size, Style,
-    TextRun, UTF16Selection, UnderlineStyle, UniformListScrollHandle, View, ViewContext,
-    ViewInputHandler, WindowBounds, WindowContext, WindowOptions,
+    TextRun, UTF16Selection, UnderlineStyle, View, ViewContext, ViewInputHandler, WindowBounds,
+    WindowContext, WindowOptions,
 };
 
 use log::{debug, info};
@@ -269,7 +268,6 @@ impl TextInput {
 }
 
 struct TextInputChange {
-    change: SharedString,
     content: SharedString,
 }
 
@@ -334,7 +332,6 @@ impl ViewInputHandler for TextInput {
         self.marked_range.take();
 
         cx.emit(TextInputChange {
-            change: new_text.to_string().into(),
             content: self.content.clone(),
         });
 
@@ -607,7 +604,7 @@ impl FocusableView for TextInput {
 struct Crowbar {
     config: Config,
     text_input: View<TextInput>,
-    action_list: View<ActionList>,
+    action_list: View<ActionListView>,
     focus_handle: FocusHandle,
 }
 
@@ -670,6 +667,9 @@ impl Render for Crowbar {
     }
 }
 
+/// Scan for path executables and fill db on first run
+fn setup() {}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().init();
@@ -702,11 +702,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             KeyBinding::new("end", End, None),
             KeyBinding::new("escape", Escape, None),
             KeyBinding::new("up", Up, None),
-            KeyBinding::new("ctrl-k", Up, None),
-            KeyBinding::new("ctrl-p", Up, None),
             KeyBinding::new("down", Down, None),
+            KeyBinding::new("ctrl-k", Up, None),
             KeyBinding::new("ctrl-j", Down, None),
+            KeyBinding::new("ctrl-p", Up, None),
             KeyBinding::new("ctrl-n", Down, None),
+            KeyBinding::new("tab", Down, None),
+            KeyBinding::new("shift-tab", Up, None),
         ]);
 
         let window = cx
@@ -732,24 +734,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         is_selecting: false,
                     });
 
-                    let action_items = executables
-                        .iter()
-                        .map(|x| ActionItem {
-                            name: x.name.clone(),
-                            action: Action::OpenProgram {
-                                path: (x.path.to_str().unwrap().to_string()),
-                                name: x.name.clone(),
-                            },
-                            is_selected: false,
-                        })
-                        .collect();
-
-                    let action_list = cx.new_view(|_cx| ActionList {
-                        items: action_items,
-                        filter: "".into(),
-                        selected_index: 0,
-                        list_scroll_handle: UniformListScrollHandle::new(),
-                    });
+                    let action_list = cx.new_view(|_cx| ActionListView::new());
 
                     let crowbar = cx.new_view(|cx| {
                         let crowbar = Crowbar {

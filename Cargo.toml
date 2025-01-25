@@ -3,6 +3,10 @@ name = "crowbar"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "crowbar"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.95"
 env_logger = "0.11.6"
@@ -17,6 +21,9 @@ unicode-segmentation = "1.12.0"
 
 gpui = { git = "https://github.com/zed-industries/zed" }
 toml = "0.8.19"
+rusqlite = "0.33.0"
+chrono = "0.4.39"
+strsim = "0.11.1"
 
 [profile.dev]
 opt-level = 0
@@ -25,3 +32,5 @@ opt-level = 0
 strip = true
 opt-level = "s"
 lto = true
+
+

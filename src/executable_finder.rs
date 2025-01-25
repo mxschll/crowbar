@@ -17,7 +17,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 /// Common Unix user-specific executable paths that might not be in PATH
-const ADDITIONAL_UNIX_PATHS: &[&str] = &["~/.local/bin", "~/bin"];
+const ADDITIONAL_UNIX_PATHS: &[&str] = &["~/.local/bin", "~/bin", "/snap/bin/"];
 
 const MAGIC_NUMBERS: &[(FileType, &[u8])] = &[
     (FileType::Elf, &[0x7f, 0x45, 0x4c, 0x46]),
@@ -107,6 +107,32 @@ fn scan_directory(
             continue;
         }
 
+        // Special handling for snap symlinks
+        if path.starts_with("/snap/bin") && path.is_symlink() {
+            if seen_paths.contains(&path) {
+                continue;
+            }
+
+            if is_executable(&path)? {
+                if let Some(exe_info) = get_executable_info(&path)? {
+                    // Use the symlink path itself for snap executables
+                    executables.push(FileInfo {
+                        name: path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown")
+                            .to_string(),
+                        path: path.clone(),
+                        file_type: exe_info.file_type,
+                    });
+
+                    seen_paths.insert(path.clone());
+                }
+            }
+            continue;
+        }
+
+        // Normal handling for other executables
         let canonical_path = fs::canonicalize(&path)?;
         if seen_paths.contains(&canonical_path) {
             continue;
