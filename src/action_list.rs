@@ -9,32 +9,12 @@ use gpui::{
     ScrollStrategy, SharedString, Styled, UniformListScrollHandle, ViewContext,
 };
 
-use crate::database::{get_actions, initialize_database, insert_action, Action, ActionList};
+use crate::database::{
+    get_actions, initialize_database, insert_action, Action, ActionList, ActionRanking, ActionType,
+};
 use crate::executable_finder::scan_path_executables;
 
 const ITEMS_TO_SHOW: usize = 100;
-
-pub struct ActionItemElement {
-    pub name: String,
-    pub action: Action,
-    pub is_selected: bool,
-}
-
-impl gpui::Render for ActionItemElement {
-    fn render(&mut self, _cx: &mut ViewContext<Self>) -> impl IntoElement {
-        div()
-            .child(format!("{}", self.name))
-            .px_4()
-            .py_2()
-            .on_mouse_up(MouseButton::Left, {
-                let action = self.action.clone();
-                move |_event, _cx| {
-                    action.execute();
-                }
-            })
-            .when(self.is_selected, |elem| elem.bg(rgb(0x404040)))
-    }
-}
 
 pub struct ActionListView {
     actions: ActionList,
@@ -106,18 +86,13 @@ impl ActionListView {
         }
     }
 
-    fn filtered_items(&self) -> Vec<ActionItemElement> {
+    fn filtered_items(&self) -> Vec<ActionRanking> {
         self.actions
             .clone()
             .fuzzy_search(&self.filter)
             .ranked()
             .collect()
-            .iter()
-            .map(|x| ActionItemElement {
-                name: x.action.name.clone(),
-                action: x.action.clone(),
-                is_selected: false,
-            })
+            .into_iter()
             .collect()
     }
 
@@ -203,7 +178,7 @@ impl gpui::Render for ActionListView {
                                     .id(index + range.start)
                                     .px_4()
                                     .py_2()
-                                    .child(item.name.clone())
+                                    .child(item.action.name.clone())
                                     .when(is_selected, |x| x.bg(rgb(0x404040)))
                             })
                             .collect()
