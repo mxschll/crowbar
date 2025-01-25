@@ -11,6 +11,7 @@ use config::Config;
 
 use std::error::Error;
 use std::ops::Range;
+use unicode_segmentation::*;
 
 use gpui::{
     actions, div, fill, hsla, point, prelude::*, px, relative, rgb, rgba, size, App, AppContext,
@@ -22,8 +23,6 @@ use gpui::{
 };
 
 use log::{debug, info};
-
-use unicode_segmentation::*;
 
 actions!(
     text_input,
@@ -670,8 +669,7 @@ impl Render for Crowbar {
 /// Scan for path executables and fill db on first run
 fn setup() {}
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().init();
 
     info!("Starting Crowbar application");

@@ -10,6 +10,14 @@ Linux application launcher. Much fast. Much in alpha, so things might break.
 
 ![](./screenshot.png)
 
+## Features
+
+- 🦀 Written in Rust (btw)
+- 🪶 Single binary, no installation required - drop it anywhere and run
+- ⚡ Lightning-fast launches (your grandmother's launcher could never)
+- 🔮 Smart suggestions that basically read your mind (based on usage patterns and time of day)
+- 🔧 Customizable to your heart's content
+
 ## Installation & Setup
 
 These instructions are written for Ubuntu, but should apply to most Linux
