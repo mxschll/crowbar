@@ -7,6 +7,9 @@
 </div>
 </h1>
 
+> **Alpha Status**: Crowbar is currently in alpha. While it's functional, you
+> may encounter bugs, and features might change in the future.
+
 Created out of love for dmenu's simplicity, but built for modern Wayland
 systems (especially Ubuntu) where dmenu can be buggy.
 
@@ -14,11 +17,11 @@ systems (especially Ubuntu) where dmenu can be buggy.
 
 ## Features
 
-- 🦀 Written in Rust (btw)
-- 🪶 Single binary, no installation required - drop it anywhere and run
-- ⚡ Lightning-fast launches (your grandmother's launcher could never)
-- 🔮 Smart suggestions that basically read your mind (based on usage patterns and time of day)
-- 🔧 Customizable to your heart's content
+- Written in Rust (btw)
+- Single binary, no installation required - drop it anywhere and run
+- Lightning-fast launches (your grandmother's launcher could never)
+- Smart suggestions that basically read your mind (based on usage patterns and time of day)
+- Customizable to your heart's content
 
 ## Installation & Setup
 
