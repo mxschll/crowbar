@@ -1,4 +1,9 @@
-use gpui::MouseButton;
+use std::time::Duration;
+
+use gpui::{
+    black, bounce, ease_in_out, percentage, pulsating_between, px, svg, white, Animation,
+    AnimationExt, MouseButton, Transformation, VisualContext,
+};
 use gpui::{
     div, prelude::FluentBuilder, rgb, uniform_list, InteractiveElement, IntoElement, ParentElement,
     ScrollStrategy, SharedString, Styled, UniformListScrollHandle, ViewContext,
@@ -39,26 +44,34 @@ pub struct ActionListView {
 }
 
 impl ActionListView {
-    pub fn new() -> ActionListView {
+    pub fn new(cx: &mut ViewContext<Self>) -> ActionListView {
         let conn = initialize_database().unwrap();
 
-        let mut actions = get_actions(&conn).unwrap();
+        let actions = get_actions(&conn).unwrap();
 
         if actions.is_empty() {
-            let executables = scan_path_executables().unwrap_or_default();
+            cx.spawn(|view, mut cx| async move {
+                let conn = initialize_database().unwrap();
 
-            for file_info in executables {
-                let _ = insert_action(
-                    &conn,
-                    &file_info.name,
-                    crate::database::ActionType::Program {
-                        name: file_info.name.clone(),
-                        path: file_info.path,
-                    },
-                );
-            }
+                let executables = scan_path_executables().unwrap_or_default();
+                for file_info in executables {
+                    let _ = insert_action(
+                        &conn,
+                        &file_info.name,
+                        crate::database::ActionType::Program {
+                            name: file_info.name.clone(),
+                            path: file_info.path,
+                        },
+                    );
+                }
 
-            actions = get_actions(&conn).unwrap();
+                let _ = view.update(&mut cx, |this, cx| {
+                    let actions = get_actions(&conn).unwrap();
+                    this.actions = actions;
+                    cx.notify();
+                });
+            })
+            .detach();
         }
 
         Self {
@@ -122,33 +135,83 @@ impl ActionListView {
     }
 }
 
+fn loading_screen() -> gpui::Div {
+    div()
+        .size_full()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .text_color(white())
+        .text_lg()
+        .child(
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child("Scanning system executables..."), //.child(
+                                                          //    div().child(".").with_animation(
+                                                          //        "dot-1",
+                                                          //        Animation::new(Duration::from_secs(2))
+                                                          //            .repeat()
+                                                          //            .with_easing(pulsating_between(0., 1.)),
+                                                          //        move |this, delta| this.text_color(white().opacity(delta)),
+                                                          //    ),
+                                                          //)
+                                                          //.child(
+                                                          //    div().child(".").with_animation(
+                                                          //        "dot-2",
+                                                          //        Animation::new(Duration::from_secs(2))
+                                                          //            .repeat()
+                                                          //            .with_easing(move |t| pulsating_between(0., 1.)((t + 0.7) % 1.0)),
+                                                          //        move |this, delta| this.text_color(white().opacity(delta)),
+                                                          //    ),
+                                                          //)
+                                                          //.child(
+                                                          //    div().child(".").with_animation(
+                                                          //        "dot-3",
+                                                          //        Animation::new(Duration::from_secs(2))
+                                                          //            .repeat()
+                                                          //            .with_easing(move |t| pulsating_between(0., 1.)((t + 0.6) % 1.0)),
+                                                          //        move |this, delta| this.text_color(white().opacity(delta)),
+                                                          //    ),
+                                                          //),
+        )
+}
+
 impl gpui::Render for ActionListView {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
-        div().size_full().child(
-            uniform_list(
-                cx.view().clone(),
-                "action-list",
-                self.filtered_items().len(),
-                |this, range, _cx| {
-                    this.filtered_items()
-                        .into_iter()
-                        .skip(range.start)
-                        .take(range.end - range.start)
-                        .enumerate()
-                        .map(|(index, item)| {
-                            let is_selected = index + range.start == this.selected_index;
-                            div()
-                                .id(index + range.start)
-                                .px_4()
-                                .py_2()
-                                .child(item.name.clone())
-                                .when(is_selected, |x| x.bg(rgb(0x404040)))
-                        })
-                        .collect()
-                },
+        let items = self.filtered_items();
+
+        if items.is_empty() && self.filter.is_empty() {
+            loading_screen()
+        } else {
+            div().size_full().child(
+                uniform_list(
+                    cx.view().clone(),
+                    "action-list",
+                    items.len(),
+                    |this, range, _cx| {
+                        this.filtered_items()
+                            .into_iter()
+                            .skip(range.start)
+                            .take(range.end - range.start)
+                            .enumerate()
+                            .map(|(index, item)| {
+                                let is_selected = index + range.start == this.selected_index;
+                                div()
+                                    .id(index + range.start)
+                                    .px_4()
+                                    .py_2()
+                                    .child(item.name.clone())
+                                    .when(is_selected, |x| x.bg(rgb(0x404040)))
+                            })
+                            .collect()
+                    },
+                )
+                .track_scroll(self.list_scroll_handle.clone())
+                .h_full(),
             )
-            .track_scroll(self.list_scroll_handle.clone())
-            .h_full(),
-        )
+        }
     }
 }

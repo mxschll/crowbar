@@ -732,7 +732,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         is_selecting: false,
                     });
 
-                    let action_list = cx.new_view(|_cx| ActionListView::new());
+                    let action_list = cx.new_view(|cx| ActionListView::new(cx));
 
                     let crowbar = cx.new_view(|cx| {
                         let crowbar = Crowbar {
