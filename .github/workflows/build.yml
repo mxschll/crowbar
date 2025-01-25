@@ -1,10 +1,8 @@
-name: Build
+name: Build Release
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  release:
+    types: [created]
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,6 +49,12 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
       
-    - uses: actions/upload-artifact@v4
+    - name: Create Archive
+      run: |
+        cd target/release
+        zip crowbar-linux-x86_64.zip crowbar
+        
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v2
       with:
-        path: target/release/crowbar
+        files: target/release/crowbar-linux-x86_64.zip
