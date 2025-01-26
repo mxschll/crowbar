@@ -10,11 +10,12 @@
 //! ```
 
 use std::collections::HashSet;
-use std::env;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+
+use crate::common::expand_tilde;
 
 /// Common Unix user-specific executable paths that might not be in PATH
 const ADDITIONAL_UNIX_PATHS: &[&str] = &["~/.local/bin", "~/bin", "/snap/bin/"];
@@ -73,16 +74,6 @@ pub fn scan_path_executables() -> io::Result<Vec<FileInfo>> {
     executables.sort_by(|a, b| a.path.cmp(&b.path));
 
     Ok(executables)
-}
-
-/// Expands the tilde (~) in paths to the user's home directory
-fn expand_tilde(path: &str) -> PathBuf {
-    if path.starts_with('~') {
-        if let Ok(home) = env::var("HOME") {
-            return PathBuf::from(path.replacen('~', &home, 1));
-        }
-    }
-    PathBuf::from(path)
 }
 
 /// Gets a list of additional directories to scan, including user-specific paths

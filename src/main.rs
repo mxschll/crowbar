@@ -1,5 +1,6 @@
 mod action_list;
 mod app_finder;
+mod common;
 mod config;
 mod database;
 mod executable_finder;
@@ -634,8 +635,7 @@ impl Crowbar {
     }
 
     fn handle_enter(&mut self, _: &Enter, cx: &mut ViewContext<Self>) {
-        if let Some(action) = self.action_list.read(cx).get_selected_action() {
-            action.execute();
+        if self.action_list.read(cx).run_selected_action() {
             self.text_input.update(cx, |input, _cx| {
                 input.reset();
             });
@@ -747,7 +747,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     cx.subscribe(&text_input, move |_view, event, cx| {
                         action_list.clone().update(cx, |this, cx| {
-                            this.set_filter(event.content.to_string());
+                            this.set_filter(&event.content);
                             cx.notify();
                         });
                     })

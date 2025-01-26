@@ -23,24 +23,33 @@ impl Action {
         }
     }
 
-    pub fn execute(&self) {
+    pub fn execute(&self, args: Option<Vec<&str>>) {
         let result = match &self.action_type {
-            ActionType::Program { path, .. } => std::process::Command::new(path)
-                .spawn()
-                .map_err(|e| (path.to_string_lossy().to_string(), e)),
+            ActionType::Program { path, .. } => {
+                let mut cmd = std::process::Command::new(path);
+                if let Some(args) = args {
+                    cmd.args(args);
+                }
+                cmd.spawn()
+                    .map_err(|e| (path.to_string_lossy().to_string(), e))
+            }
             ActionType::Desktop { exec, .. } => {
                 let parts: Vec<String> = shlex::split(exec).unwrap_or_else(|| vec![exec.clone()]);
 
                 if parts.is_empty() {
-                    error!("Emty command");
+                    error!("Empty command");
                     return ();
                 }
 
-                let (command, args) = (parts[0].clone(), &parts[1..]);
-                std::process::Command::new(&command)
-                    .args(args)
-                    .spawn()
-                    .map_err(|e| (exec.clone(), e))
+                let (command, base_args) = (parts[0].clone(), &parts[1..]);
+                let mut cmd = std::process::Command::new(&command);
+                cmd.args(base_args);
+
+                if let Some(args) = args {
+                    cmd.args(args);
+                }
+
+                cmd.spawn().map_err(|e| (exec.clone(), e))
             }
         };
 

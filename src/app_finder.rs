@@ -1,9 +1,16 @@
-use std::env;
+//! Module for scanning and parsing desktop entry files on Unix-like systems.
+//!
+//! This module provides functionality to find and parse `.desktop` files from
+//! standard system locations, extracting application information such as name,
+//! executable path, and icon location.
+
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
-const DESKTOPENTRIES_UNIX_PATHS: &[&str] = &[
+use crate::common::expand_tilde;
+
+const DESKTOP_ENTRIES_UNIX_PATHS: &[&'static str] = &[
     "~/.local/share/applications",         // User-specific applications
     "/usr/share/applications",             // System-wide applications
     "/usr/local/share/applications",       // Locally installed applications
@@ -16,33 +23,43 @@ const DESKTOPENTRIES_UNIX_PATHS: &[&str] = &[
     "/usr/share/kde/applications",         // KDE applications
 ];
 
-#[derive(Debug, Clone)]
+// https://specifications.freedesktop.org/desktop-entry-spec/latest/exec-variables.html
+const DESKTOP_ENTRY_FIELD_CODES: &[&'static str] = &[
+    "%f", // Single file name
+    "%F", // A list of files
+    "%u", // A single URL
+    "%U", // A list of URLs
+    "%d", // Deprecated
+    "%D", // Deprecated
+    "%n", // Deprecated
+    "%N", // Deprecated
+    "%i", // The Icon key of the desktop entry expanded as two arguments, first --icon and then the value of the Icon key.
+    "%c", // The translated name of the application as listed in the appropriate Name key in the desktop entry
+    "%k", // The location of the desktop file
+    "%v", // Deprecated
+    "%m", // Deprecated
+];
+
+/// Represents information about a desktop application
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AppInfo {
     pub name: String,
     pub exec: String,
-    icon: String,
+    pub icon: String,
     pub filename: String,
 }
 
-/// Expands the tilde (~) in paths to the user's home directory
-fn expand_tilde(path: &str) -> PathBuf {
-    if path.starts_with('~') {
-        if let Ok(home) = env::var("HOME") {
-            return PathBuf::from(path.replacen('~', &home, 1));
-        }
-    }
-    PathBuf::from(path)
-}
-
+/// Scan system directories for desktop entries and return a list of valid applications
 pub fn scan_desktopentries() -> Vec<AppInfo> {
-    let mut apps = Vec::new();
-
-    for path in DESKTOPENTRIES_UNIX_PATHS {
-        let expanded_path = expand_tilde(path);
-        scan_directory(&expanded_path, &mut apps);
-    }
-
-    apps
+    DESKTOP_ENTRIES_UNIX_PATHS
+        .iter()
+        .flat_map(|path| {
+            let expanded_path = expand_tilde(path);
+            let mut apps = Vec::new();
+            scan_directory(&expanded_path, &mut apps);
+            apps
+        })
+        .collect()
 }
 
 fn scan_directory(dir: &PathBuf, apps: &mut Vec<AppInfo>) {
@@ -62,57 +79,70 @@ fn scan_directory(dir: &PathBuf, apps: &mut Vec<AppInfo>) {
     }
 }
 
+fn strip_field_codes(exec: &str) -> String {
+    DESKTOP_ENTRY_FIELD_CODES
+        .iter()
+        .fold(exec.to_string(), |acc, &code| acc.replace(code, ""))
+        .trim()
+        .to_string()
+}
+
+/// Parse a desktop entry file and return application information if valid
 fn parse_desktop_file(path: &PathBuf) -> Option<AppInfo> {
     let file = fs::File::open(path).ok()?;
     let reader = BufReader::new(file);
-
-    let mut name = String::new();
-    let mut exec = String::new();
-    let mut icon = String::new();
-    let mut type_entry = String::new();
     let filename = path.file_name()?.to_string_lossy().into_owned();
 
+    let mut entry_data = DesktopEntryData::default();
     let mut in_desktop_entry = false;
 
     for line in reader.lines().flatten() {
         let line = line.trim();
 
-        if line == "[Desktop Entry]" {
-            in_desktop_entry = true;
-            continue;
-        } else if line.starts_with('[') {
-            in_desktop_entry = false;
-            continue;
-        }
-
-        if !in_desktop_entry {
-            continue;
-        }
-
-        if let Some((key, value)) = line.split_once('=') {
-            match key.trim() {
-                "Name" => name = value.trim().to_string(),
-                "Exec" => exec = value.trim().to_string(),
-                "Icon" => icon = value.trim().to_string(),
-                "Type" => type_entry = value.trim().to_string(),
-                _ => {}
+        match line {
+            "[Desktop Entry]" => in_desktop_entry = true,
+            line if line.starts_with('[') => in_desktop_entry = false,
+            line if in_desktop_entry => {
+                if let Some((key, value)) = line.split_once('=') {
+                    entry_data.update_field(key.trim(), value.trim());
+                }
             }
+            _ => continue,
         }
     }
 
-    // Skip entries that aren't applications
-    if type_entry != "Application" {
-        return None;
+    entry_data.build_app_info(filename)
+}
+
+#[derive(Default)]
+struct DesktopEntryData {
+    name: String,
+    exec: String,
+    icon: String,
+    type_entry: String,
+}
+
+impl DesktopEntryData {
+    fn update_field(&mut self, key: &str, value: &str) {
+        match key {
+            "Name" => self.name = value.to_string(),
+            "Exec" => self.exec = strip_field_codes(value),
+            "Icon" => self.icon = value.to_string(),
+            "Type" => self.type_entry = value.to_string(),
+            _ => {}
+        }
     }
 
-    if name.is_empty() || exec.is_empty() {
-        return None;
-    }
+    fn build_app_info(self, filename: String) -> Option<AppInfo> {
+        if self.type_entry != "Application" || self.name.is_empty() || self.exec.is_empty() {
+            return None;
+        }
 
-    Some(AppInfo {
-        name,
-        exec,
-        icon,
-        filename,
-    })
+        Some(AppInfo {
+            name: self.name,
+            exec: self.exec,
+            icon: self.icon,
+            filename,
+        })
+    }
 }

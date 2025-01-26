@@ -15,13 +15,14 @@ use crate::database::{
 };
 use crate::executable_finder::scan_path_executables;
 
-const ITEMS_TO_SHOW: usize = 100;
+const ITEMS_TO_SHOW: usize = 30;
 
 pub struct ActionListView {
     actions: ActionList,
-    pub filter: SharedString,
-    pub selected_index: usize,
-    pub list_scroll_handle: UniformListScrollHandle,
+    filter: SharedString,
+    args: Vec<String>,
+    selected_index: usize,
+    list_scroll_handle: UniformListScrollHandle,
 }
 
 impl ActionListView {
@@ -69,7 +70,8 @@ impl ActionListView {
 
         Self {
             actions,
-            filter: "".into(),
+            filter: Default::default(),
+            args: Default::default(),
             selected_index: 0,
             list_scroll_handle: UniformListScrollHandle::new(),
         }
@@ -109,9 +111,12 @@ impl ActionListView {
             .collect()
     }
 
-    pub fn set_filter(&mut self, new_filter: String) {
-        self.filter = new_filter.into();
-        self.selected_index = 0;
+    pub fn set_filter(&mut self, new_filter: &str) {
+        let mut filter_iter = new_filter.split_whitespace();
+
+        self.filter = filter_iter.next().unwrap_or_default().to_string().into();
+        self.args = filter_iter.map(String::from).collect();
+
         self.list_scroll_handle
             .scroll_to_item(self.selected_index, ScrollStrategy::Top);
     }
@@ -120,6 +125,19 @@ impl ActionListView {
         self.filtered_items()
             .get(self.selected_index)
             .map(|item| item.action.clone())
+    }
+
+    pub fn run_selected_action(&self) -> bool {
+        if let Some(action) = self.get_selected_action() {
+            action.execute(if self.args.is_empty() {
+                None
+            } else {
+                Some(self.args.iter().map(|s| s.as_str()).collect())
+            });
+            return true;
+        }
+
+        return false;
     }
 }
 
