@@ -7,6 +7,8 @@
 </div>
 </h1>
 
+[![Build Release](https://github.com/mxschll/crowbar/actions/workflows/build.yml/badge.svg)](https://github.com/mxschll/crowbar/actions/workflows/build.yml)
+
 > **Alpha Status**: Crowbar is currently in alpha. While it's functional, you
 > may encounter bugs, and features might change in the future.
 
