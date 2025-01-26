@@ -9,6 +9,7 @@ use gpui::{
     ScrollStrategy, SharedString, Styled, UniformListScrollHandle, ViewContext,
 };
 
+use crate::app_finder::scan_desktopentries;
 use crate::database::{
     get_actions, initialize_database, insert_action, Action, ActionList, ActionRanking, ActionType,
 };
@@ -34,16 +35,28 @@ impl ActionListView {
                 let conn = initialize_database().unwrap();
 
                 let executables = scan_path_executables().unwrap_or_default();
-                for file_info in executables {
+                executables.iter().for_each(|elem| {
                     let _ = insert_action(
                         &conn,
-                        &file_info.name,
+                        &elem.name,
                         crate::database::ActionType::Program {
-                            name: file_info.name.clone(),
-                            path: file_info.path,
+                            name: elem.name.clone(),
+                            path: elem.path.clone(),
                         },
                     );
-                }
+                });
+
+                let desktopentries = scan_desktopentries();
+                desktopentries.iter().for_each(|elem| {
+                    let _ = insert_action(
+                        &conn,
+                        &elem.name,
+                        ActionType::Desktop {
+                            name: elem.name.clone(),
+                            exec: elem.exec.clone(),
+                        },
+                    );
+                });
 
                 let _ = view.update(&mut cx, |this, cx| {
                     let actions = get_actions(&conn).unwrap();
@@ -154,6 +167,31 @@ fn loading_screen() -> gpui::Div {
         )
 }
 
+fn render_action_item(
+    name: &str,
+    details: &str,
+    execution_count: i32,
+    is_selected: bool,
+) -> gpui::Div {
+    let secondary_text = |elem: gpui::Div| {
+        elem.text_color(rgb(0x3B4B4F))
+            .when(is_selected, |elem| elem.text_color(rgb(0x91B0B0)))
+    };
+
+    div()
+        .flex()
+        .gap_4()
+        .child(div().flex_none().child(name.to_string()))
+        .child(
+            secondary_text(div().flex_grow()).child(if details.len() > 50 {
+                format!("{}...", &details[..50])
+            } else {
+                details.to_string()
+            }),
+        )
+        .child(secondary_text(div()).child(format!("{} launches", execution_count)))
+}
+
 impl gpui::Render for ActionListView {
     fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let items = self.filtered_items();
@@ -179,30 +217,18 @@ impl gpui::Render for ActionListView {
                                     .px_4()
                                     .py_2()
                                     .child(match &item.action.action_type {
-                                        ActionType::Program { name, path } => div()
-                                            .flex()
-                                            .gap_4()
-                                            .child(div().flex_none().child(name.to_string()))
-                                            .child(
-                                                div()
-                                                    .flex_grow()
-                                                    .text_color(rgb(0x3B4B4F))
-                                                    .when(is_selected, |elem| {
-                                                        elem.text_color(rgb(0x91B0B0))
-                                                    })
-                                                    .child(path.to_string_lossy().to_string()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_color(rgb(0x3B4B4F))
-                                                    .when(is_selected, |elem| {
-                                                        elem.text_color(rgb(0x91B0B0))
-                                                    })
-                                                    .child(format!(
-                                                        "{} launches",
-                                                        item.execution_count
-                                                    )),
-                                            ),
+                                        ActionType::Program { name, path } => render_action_item(
+                                            name,
+                                            &path.to_string_lossy(),
+                                            item.execution_count,
+                                            is_selected,
+                                        ),
+                                        ActionType::Desktop { name, exec } => render_action_item(
+                                            name,
+                                            exec,
+                                            item.execution_count,
+                                            is_selected,
+                                        ),
                                     })
                                     .when(is_selected, |x| x.bg(rgb(0x404040)))
                             })

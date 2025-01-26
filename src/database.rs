@@ -1,9 +1,11 @@
+use core::error;
 use std::{env, fs, path::PathBuf};
 
 use anyhow::Context;
 use chrono::{self, Timelike};
-use log::info;
+use log::{error, info};
 use rusqlite::{Connection, Result};
+use shlex;
 use strsim::jaro_winkler;
 
 #[derive(Debug, Clone)]
@@ -17,30 +19,61 @@ impl Action {
     fn display_name(&self) -> &str {
         match &self.action_type {
             ActionType::Program { name, .. } => name,
+            ActionType::Desktop { name, .. } => name,
         }
     }
 
     pub fn execute(&self) {
-        match &self.action_type {
-            ActionType::Program { path, .. } => match std::process::Command::new(path).spawn() {
-                Ok(_) => {
-                    info!("Launching {}", self.display_name());
-                    let conn = initialize_database().unwrap();
+        let result = match &self.action_type {
+            ActionType::Program { path, .. } => std::process::Command::new(path)
+                .spawn()
+                .map_err(|e| (path.to_string_lossy().to_string(), e)),
+            ActionType::Desktop { exec, .. } => {
+                let parts: Vec<String> = shlex::split(exec).unwrap_or_else(|| vec![exec.clone()]);
+
+                if parts.is_empty() {
+                    error!("Emty command");
+                    return ();
+                }
+
+                let (command, args) = (parts[0].clone(), &parts[1..]);
+                std::process::Command::new(&command)
+                    .args(args)
+                    .spawn()
+                    .map_err(|e| (exec.clone(), e))
+            }
+        };
+
+        match result {
+            Ok(_) => {
+                info!("Launching {}", self.display_name());
+                if let Ok(conn) = initialize_database() {
                     let _ = log_execution(&conn, &self);
                 }
-                Err(e) => eprintln!(
-                    "Failed to start {}: {}",
-                    path.to_string_lossy().to_string(),
-                    e
-                ),
-            },
+            }
+            Err((cmd, e)) => eprintln!("Failed to start {}: {}", cmd, e),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum ActionType {
-    Program { name: String, path: PathBuf },
+    /// Binary executable found in the system PATH or with absolute path.
+    /// Contains the filename and its full path on the filesystem.
+    Program {
+        /// Display name of the program
+        name: String,
+        /// Full path to the executable
+        path: PathBuf,
+    },
+    /// Linux desktop entry (.desktop file).
+    /// Contains the application name and the command to execute.
+    Desktop {
+        /// Name of the application from the desktop entry
+        name: String,
+        /// The command to execute, as specified in the Exec field
+        exec: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -105,7 +138,8 @@ impl ActionList {
 pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionType) -> Result<i64> {
     // First, insert or get the program item if it's a program action
     let item_type = match &action_type {
-        ActionType::Program { name: _, path: _ } => "program",
+        ActionType::Program { .. } => "program",
+        ActionType::Desktop { .. } => "desktop",
     };
 
     // Insert the action
@@ -120,11 +154,19 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
         |row| row.get(0),
     )?;
 
-    if let ActionType::Program { name, path } = action_type {
-        conn.execute(
-            "INSERT OR IGNORE INTO program_items (name, path) VALUES (?1, ?2)",
-            (name, path.to_string_lossy().to_string()),
-        )?;
+    match action_type {
+        ActionType::Program { name, path } => {
+            conn.execute(
+                "INSERT OR IGNORE INTO program_items (name, path) VALUES (?1, ?2)",
+                (name, path.to_string_lossy().to_string()),
+            )?;
+        }
+        ActionType::Desktop { name, exec } => {
+            conn.execute(
+                "INSERT OR IGNORE INTO desktop_items (name, exec) VALUES (?1, ?2)",
+                (name, exec),
+            )?;
+        }
     }
 
     Ok(action_id)
@@ -151,32 +193,37 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
     // Query that combines execution count with time-based relevance
     let mut stmt = conn.prepare(
         "
-            WITH action_stats AS (
-                SELECT 
-                    a.id,
-                    a.name,
-                    a.action_type,
-                    p.path as program_path,
-                    p.name as program_name,
-                    COUNT(e.id) as execution_count,
-                    COALESCE(GROUP_CONCAT(strftime('%H', e.execution_timestamp)), '') as execution_hours
-                FROM actions a
-                LEFT JOIN action_executions e ON a.id = e.action_id
-                LEFT JOIN program_items p ON (
-                    a.action_type = 'program' 
-                    AND p.name = a.name
-                )
-                GROUP BY a.id, a.name, a.action_type, p.path, p.name
-            )
             SELECT 
-                id,
-                name,
-                action_type,
+                a.id,
+                a.name,
+                a.action_type,
+                -- Program-specific fields
+                p.path as program_path,
+                p.name as program_name,
+                -- Desktop-specific fields
+                d.exec as desktop_exec,
+                d.name as desktop_name,
+                -- Execution statistics
+                COUNT(e.id) as execution_count,
+                COALESCE(GROUP_CONCAT(strftime('%H', e.execution_timestamp)), '') as execution_hours
+            FROM actions a
+            -- Join execution history
+            LEFT JOIN action_executions e ON a.id = e.action_id
+            -- Join action type specific tables
+            LEFT JOIN program_items p ON (
+                a.action_type = 'program' AND p.name = a.name
+            )
+            LEFT JOIN desktop_items d ON (
+                a.action_type = 'desktop' AND d.name = a.name
+            )
+            GROUP BY 
+                a.id,
+                a.name,
+                a.action_type,
                 program_path,
                 program_name,
-                execution_count,
-                execution_hours
-            FROM action_stats
+                desktop_exec,
+                desktop_name
         ",
     )?;
 
@@ -188,21 +235,29 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
         let action_type: String = row.get(2)?;
         let program_path: Option<String> = row.get(3)?;
         let program_name: Option<String> = row.get(4)?;
-        let execution_count: i32 = row.get(5)?;
-        let hours_str: String = row.get(6)?;
+        let desktop_exec: Option<String> = row.get(5)?;
+        let desktop_name: Option<String> = row.get(6)?;
+        let execution_count: i32 = row.get(7)?;
+        let hours_str: String = row.get(8)?;
 
         let hours: Vec<f64> = hours_str
             .split(',')
             .filter_map(|h| h.parse::<f64>().ok())
             .collect();
 
-        let relevance_score = calculate_time_relevance(current_hour, &hours, execution_count);
+        let relevance_score =
+            calculate_time_relevance(current_hour, &hours, execution_count, &action_type);
 
         let action_type = match action_type.as_str() {
             "program" => ActionType::Program {
                 name: program_name.unwrap_or_else(|| action_name.clone()),
                 path: PathBuf::from(program_path.unwrap_or_default()),
             },
+            "desktop" => ActionType::Desktop {
+                name: desktop_name.unwrap_or_else(|| action_name.clone()),
+                exec: desktop_exec.unwrap_or_default(),
+            },
+
             _ => panic!("Unknown action type: {}", action_type),
         };
 
@@ -235,14 +290,26 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
 /// * `current_hour` - The current hour (0-23)
 /// * `hours` - Vec of hours when the action was previously executed
 /// * `execution_count` - Total number of times the action has been executed
+/// * `action_type` - The action, which affects the relevance score
 ///
 /// # Returns
 ///
 /// A relevance score (≥ 1.0) where higher values indicate greater relevance
 ///
-fn calculate_time_relevance(current_hour: f64, hours: &[f64], execution_count: i32) -> f64 {
+fn calculate_time_relevance(
+    current_hour: f64,
+    hours: &[f64],
+    execution_count: i32,
+    action_type: &str,
+) -> f64 {
+    // Desktop items get a 10% boost in relevance
+    let type_multiplier = match action_type {
+        "desktop" => 1.1,
+        _ => 1.0,
+    };
+
     if hours.is_empty() {
-        return 1.0;
+        return 1.0 * type_multiplier;
     }
 
     // Calculate time-based weight
@@ -266,81 +333,77 @@ fn calculate_time_relevance(current_hour: f64, hours: &[f64], execution_count: i
     let count_factor = 1.0 + (execution_count as f64).ln();
 
     // Final score combines both factors, ensuring result is ≥ 1.0
-    count_factor * time_factor
+    count_factor * time_factor * type_multiplier
 }
+
+const TABLE_SCHEMAS: [&str; 4] = [
+    "CREATE TABLE actions (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        action_type TEXT NOT NULL
+    )",
+    "CREATE TABLE program_items (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        UNIQUE(path, name)
+    )",
+    "CREATE TABLE desktop_items (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        exec TEXT NOT NULL,
+        UNIQUE(exec, name)
+    )",
+    "CREATE TABLE action_executions (
+        id INTEGER PRIMARY KEY,
+        action_id INTEGER NOT NULL,
+        execution_timestamp TEXT NOT NULL,
+        FOREIGN KEY(action_id) REFERENCES actions(id)
+    )",
+];
 
 /// Verifies if database has the correct tables and columns.
 fn verify_schema(conn: &Connection) -> Result<bool> {
-    // Check if tables exist and have correct columns
-    let actions_result: Result<Vec<String>> = conn
-        .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='actions'")?
-        .query_map([], |row| row.get(0))?
-        .collect();
+    let tables = [
+        "actions",
+        "program_items",
+        "desktop_items",
+        "action_executions",
+    ];
+    let mut schemas = Vec::new();
 
-    let program_items_result: Result<Vec<String>> = conn
-        .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='program_items'")?
-        .query_map([], |row| row.get(0))?
-        .collect();
-
-    let action_executions_result: Result<Vec<String>> = conn
-        .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='action_executions'")?
-        .query_map([], |row| row.get(0))?
-        .collect();
-
-    let expected_actions_schema = "CREATE TABLE actions (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            action_type TEXT NOT NULL
-        )"
-    .split_whitespace()
-    .collect::<String>();
-
-    let expected_program_items_schema = "CREATE TABLE program_items (
-            id INTEGER PRIMARY KEY,
-            path TEXT NOT NULL,
-            name TEXT NOT NULL,
-            UNIQUE(path, name)
-        )"
-    .split_whitespace()
-    .collect::<String>();
-
-    let expected_action_executions_schema = "CREATE TABLE action_executions (
-            id INTEGER PRIMARY KEY,
-            action_id INTEGER NOT NULL,
-            execution_timestamp TEXT NOT NULL,
-            FOREIGN KEY(action_id) REFERENCES actions(id)
-        )"
-    .split_whitespace()
-    .collect::<String>();
-
-    match (
-        actions_result,
-        program_items_result,
-        action_executions_result,
-    ) {
-        (Ok(actions_schemas), Ok(program_items_schemas), Ok(action_executions_schemas)) => {
-            if let (
-                Some(actions_schema),
-                Some(program_items_schema),
-                Some(action_executions_schema),
-            ) = (
-                actions_schemas.first(),
-                program_items_schemas.first(),
-                action_executions_schemas.first(),
-            ) {
-                return Ok(actions_schema.split_whitespace().collect::<String>()
-                    == expected_actions_schema
-                    && program_items_schema.split_whitespace().collect::<String>()
-                        == expected_program_items_schema
-                    && action_executions_schema
-                        .split_whitespace()
-                        .collect::<String>()
-                        == expected_action_executions_schema);
-            }
-        }
-        _ => return Ok(false),
+    for table in tables.iter() {
+        let result: Result<Vec<String>> = conn
+            .prepare(&format!(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='{}'",
+                table
+            ))?
+            .query_map([], |row| row.get(0))?
+            .collect();
+        schemas.push(result);
     }
-    Ok(false)
+
+    let expected_schemas: Vec<String> = TABLE_SCHEMAS
+        .iter()
+        .map(|s| s.split_whitespace().collect::<String>())
+        .collect();
+
+    // Check if all tables exist and match their expected schemas
+    for (i, schema_result) in schemas.iter().enumerate() {
+        match schema_result {
+            Ok(table_schemas) => {
+                if let Some(actual_schema) = table_schemas.first() {
+                    if actual_schema.split_whitespace().collect::<String>() != expected_schemas[i] {
+                        return Ok(false);
+                    }
+                } else {
+                    return Ok(false);
+                }
+            }
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 
 fn get_database_path() -> Result<PathBuf> {
@@ -378,34 +441,11 @@ pub fn initialize_database() -> Result<Connection> {
 
     let conn = Connection::open(db_path)?;
 
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS actions (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            action_type TEXT NOT NULL
-        )",
-        (),
-    )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS program_items (
-            id INTEGER PRIMARY KEY,
-            path TEXT NOT NULL,
-            name TEXT NOT NULL,
-            UNIQUE(path, name)
-        )",
-        (),
-    )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS action_executions (
-            id INTEGER PRIMARY KEY,
-            action_id INTEGER NOT NULL,
-            execution_timestamp TEXT NOT NULL,
-            FOREIGN KEY(action_id) REFERENCES actions(id)
-        )",
-        (),
-    )?;
+    // Create all tables using the schema definitions
+    for schema in TABLE_SCHEMAS.iter() {
+        let create_stmt = schema.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS");
+        conn.execute(&create_stmt, ())?;
+    }
 
     Ok(conn)
 }

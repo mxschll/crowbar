@@ -17,11 +17,11 @@ const DESKTOPENTRIES_UNIX_PATHS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone)]
-struct AppInfo {
-    name: String,
-    exec: String,
+pub struct AppInfo {
+    pub name: String,
+    pub exec: String,
     icon: String,
-    filename: String,
+    pub filename: String,
 }
 
 /// Expands the tilde (~) in paths to the user's home directory
@@ -34,7 +34,7 @@ fn expand_tilde(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-fn scan_desktopentries() -> Vec<AppInfo> {
+pub fn scan_desktopentries() -> Vec<AppInfo> {
     let mut apps = Vec::new();
 
     for path in DESKTOPENTRIES_UNIX_PATHS {
@@ -69,6 +69,7 @@ fn parse_desktop_file(path: &PathBuf) -> Option<AppInfo> {
     let mut name = String::new();
     let mut exec = String::new();
     let mut icon = String::new();
+    let mut type_entry = String::new();
     let filename = path.file_name()?.to_string_lossy().into_owned();
 
     let mut in_desktop_entry = false;
@@ -93,9 +94,15 @@ fn parse_desktop_file(path: &PathBuf) -> Option<AppInfo> {
                 "Name" => name = value.trim().to_string(),
                 "Exec" => exec = value.trim().to_string(),
                 "Icon" => icon = value.trim().to_string(),
+                "Type" => type_entry = value.trim().to_string(),
                 _ => {}
             }
         }
+    }
+
+    // Skip entries that aren't applications
+    if type_entry != "Application" {
+        return None;
     }
 
     if name.is_empty() || exec.is_empty() {
