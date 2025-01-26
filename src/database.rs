@@ -46,7 +46,7 @@ pub enum ActionType {
 #[derive(Debug, Clone)]
 pub struct ActionRanking {
     pub action: Action,
-    execution_count: i32,
+    pub execution_count: i32,
     relevance_score: f64,
 }
 

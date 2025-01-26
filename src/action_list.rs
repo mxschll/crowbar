@@ -178,7 +178,32 @@ impl gpui::Render for ActionListView {
                                     .id(index + range.start)
                                     .px_4()
                                     .py_2()
-                                    .child(item.action.name.clone())
+                                    .child(match &item.action.action_type {
+                                        ActionType::Program { name, path } => div()
+                                            .flex()
+                                            .gap_4()
+                                            .child(div().flex_none().child(name.to_string()))
+                                            .child(
+                                                div()
+                                                    .flex_grow()
+                                                    .text_color(rgb(0x3B4B4F))
+                                                    .when(is_selected, |elem| {
+                                                        elem.text_color(rgb(0x91B0B0))
+                                                    })
+                                                    .child(path.to_string_lossy().to_string()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_color(rgb(0x3B4B4F))
+                                                    .when(is_selected, |elem| {
+                                                        elem.text_color(rgb(0x91B0B0))
+                                                    })
+                                                    .child(format!(
+                                                        "{} launches",
+                                                        item.execution_count
+                                                    )),
+                                            ),
+                                    })
                                     .when(is_selected, |x| x.bg(rgb(0x404040)))
                             })
                             .collect()
