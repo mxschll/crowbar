@@ -3,7 +3,7 @@ use std::{env, fs, path::PathBuf};
 
 use anyhow::Context;
 use chrono::{self, Timelike};
-use log::{error, info};
+use log::{debug, error, info};
 use rusqlite::{Connection, Result};
 use shlex;
 use strsim::jaro_winkler;
@@ -184,8 +184,6 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
 pub fn log_execution(conn: &Connection, action: &Action) -> Result<()> {
     info!("Logging action execution");
     let timestamp = chrono::Local::now().to_rfc3339();
-
-    dbg!(action);
 
     conn.execute(
         "INSERT INTO action_executions (action_id, execution_timestamp) VALUES (?1, ?2)",
