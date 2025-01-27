@@ -1,17 +1,16 @@
-use core::error;
 use std::{env, fs, path::PathBuf};
 
 use anyhow::Context;
 use chrono::{self, Timelike};
-use log::{debug, error, info};
+use log::{error, info};
 use rusqlite::{Connection, Result};
 use shlex;
 use strsim::jaro_winkler;
 
 #[derive(Debug, Clone)]
 pub struct Action {
-    pub id: i64,
-    pub name: String,
+    id: i64,
+    name: String,
     pub action_type: ActionType,
 }
 

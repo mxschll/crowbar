@@ -112,13 +112,14 @@ impl ActionListView {
     }
 
     pub fn set_filter(&mut self, new_filter: &str) {
-        let mut filter_iter = new_filter.split_whitespace();
-
-        self.filter = filter_iter.next().unwrap_or_default().to_string().into();
-        self.args = filter_iter.map(String::from).collect();
+        self.filter = new_filter.to_string().into();
 
         self.list_scroll_handle
             .scroll_to_item(self.selected_index, ScrollStrategy::Top);
+    }
+
+    pub fn set_args(&mut self, args: &str) {
+        self.args = args.split_whitespace().map(str::to_string).collect();
     }
 
     pub fn get_selected_action(&self) -> Option<Action> {
