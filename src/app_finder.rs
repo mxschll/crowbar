@@ -9,6 +9,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 use crate::common::expand_tilde;
+use crate::desktop_entry_categories::Category;
 
 const DESKTOP_ENTRIES_UNIX_PATHS: &[&'static str] = &[
     "~/.local/share/applications",         // User-specific applications
@@ -40,17 +41,21 @@ const DESKTOP_ENTRY_FIELD_CODES: &[&'static str] = &[
     "%m", // Deprecated
 ];
 
+pub const ARGUMENT_FIELD_CODES: &[&str] = &["%f", "%F", "%u", "%U"];
+
 /// Represents information about a desktop application
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AppInfo {
+pub struct DesktopEntry {
     pub name: String,
     pub exec: String,
     pub icon: String,
     pub filename: String,
+    pub takes_args: bool,
+    pub categories: Vec<Category>,
 }
 
 /// Scan system directories for desktop entries and return a list of valid applications
-pub fn scan_desktopentries() -> Vec<AppInfo> {
+pub fn scan_desktopentries() -> Vec<DesktopEntry> {
     DESKTOP_ENTRIES_UNIX_PATHS
         .iter()
         .flat_map(|path| {
@@ -62,7 +67,7 @@ pub fn scan_desktopentries() -> Vec<AppInfo> {
         .collect()
 }
 
-fn scan_directory(dir: &PathBuf, apps: &mut Vec<AppInfo>) {
+fn scan_directory(dir: &PathBuf, apps: &mut Vec<DesktopEntry>) {
     if !dir.exists() {
         return;
     }
@@ -79,21 +84,17 @@ fn scan_directory(dir: &PathBuf, apps: &mut Vec<AppInfo>) {
     }
 }
 
-fn strip_field_codes(exec: &str) -> String {
-    DESKTOP_ENTRY_FIELD_CODES
-        .iter()
-        .fold(exec.to_string(), |acc, &code| acc.replace(code, ""))
-        .trim()
-        .to_string()
-}
-
 /// Parse a desktop entry file and return application information if valid
-fn parse_desktop_file(path: &PathBuf) -> Option<AppInfo> {
+fn parse_desktop_file(path: &PathBuf) -> Option<DesktopEntry> {
     let file = fs::File::open(path).ok()?;
     let reader = BufReader::new(file);
     let filename = path.file_name()?.to_string_lossy().into_owned();
 
-    let mut entry_data = DesktopEntryData::default();
+    let mut name = String::new();
+    let mut exec = String::new();
+    let mut icon = String::new();
+    let mut type_entry = String::new();
+    let mut categories = Vec::new();
     let mut in_desktop_entry = false;
 
     for line in reader.lines().flatten() {
@@ -104,45 +105,50 @@ fn parse_desktop_file(path: &PathBuf) -> Option<AppInfo> {
             line if line.starts_with('[') => in_desktop_entry = false,
             line if in_desktop_entry => {
                 if let Some((key, value)) = line.split_once('=') {
-                    entry_data.update_field(key.trim(), value.trim());
+                    match key.trim() {
+                        "Name" => name = value.trim().to_string(),
+                        "Exec" => exec = value.trim().to_string(),
+                        "Icon" => icon = value.trim().to_string(),
+                        "Type" => type_entry = value.trim().to_string(),
+                        "Categories" => {
+                            categories = value
+                                .split(';')
+                                .filter(|s| !s.is_empty())
+                                .filter_map(|s| Category::from_str(s.trim()))
+                                .collect();
+                        }
+                        _ => {}
+                    }
                 }
             }
             _ => continue,
         }
     }
 
-    entry_data.build_app_info(filename)
-}
-
-#[derive(Default)]
-struct DesktopEntryData {
-    name: String,
-    exec: String,
-    icon: String,
-    type_entry: String,
-}
-
-impl DesktopEntryData {
-    fn update_field(&mut self, key: &str, value: &str) {
-        match key {
-            "Name" => self.name = value.to_string(),
-            "Exec" => self.exec = strip_field_codes(value),
-            "Icon" => self.icon = value.to_string(),
-            "Type" => self.type_entry = value.to_string(),
-            _ => {}
-        }
+    if type_entry != "Application" || name.is_empty() || exec.is_empty() {
+        return None;
     }
 
-    fn build_app_info(self, filename: String) -> Option<AppInfo> {
-        if self.type_entry != "Application" || self.name.is_empty() || self.exec.is_empty() {
-            return None;
-        }
+    // Only enable takes_args for web browsers
+    let takes_args = categories
+        .iter()
+        .any(|cat| matches!(cat, Category::WebBrowser))
+        && ARGUMENT_FIELD_CODES.iter().any(|&code| {
+            // Split exec by whitespace and check if any part exactly matches the field code
+            exec.split_whitespace().any(|part| part == code)
+        });
+    let exec = DESKTOP_ENTRY_FIELD_CODES
+        .iter()
+        .fold(exec, |acc, &code| acc.replace(code, ""))
+        .trim()
+        .to_string();
 
-        Some(AppInfo {
-            name: self.name,
-            exec: self.exec,
-            icon: self.icon,
-            filename,
-        })
-    }
+    Some(DesktopEntry {
+        name,
+        exec,
+        icon,
+        filename,
+        takes_args,
+        categories,
+    })
 }

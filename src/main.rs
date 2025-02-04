@@ -3,10 +3,12 @@ mod app_finder;
 mod common;
 mod config;
 mod database;
+mod desktop_entry_categories;
 mod executable_finder;
 mod text_input;
 
 use action_list::ActionListView;
+use database::ActionType;
 use executable_finder::scan_path_executables;
 
 use config::Config;
@@ -15,7 +17,7 @@ use text_input::TextInput;
 use std::error::Error;
 
 use gpui::{
-    actions, div, prelude::*, px, rgb, App, AppContext, Bounds, FocusHandle, FocusableView,
+    actions, div, prelude::*, px, rgb, Action, App, AppContext, Bounds, FocusHandle, FocusableView,
     KeyBinding, Size, View, ViewContext, WindowBounds, WindowOptions,
 };
 
@@ -49,6 +51,7 @@ struct Crowbar {
     config: Config,
     query_input: View<TextInput>,
     argument_input: View<TextInput>,
+    show_argument_input: bool,
     action_list: View<ActionListView>,
     focus_handle: FocusHandle,
 }
@@ -61,22 +64,36 @@ impl FocusableView for Crowbar {
 
 impl Crowbar {
     fn navigate_up(&mut self, _: &Up, cx: &mut ViewContext<Self>) {
-        debug!("Navigating up");
         self.action_list.update(cx, |list, cx| {
             list.navigate_up(cx);
         });
+
+        let action = self.action_list.read(cx).get_selected_action().unwrap();
+        self.show_argument_input = match action.action_type {
+            ActionType::Desktop { accepts_args, .. } => accepts_args,
+            _ => false,
+        };
+        cx.focus_view(&self.query_input);
     }
 
     fn navigate_down(&mut self, _: &Down, cx: &mut ViewContext<Self>) {
-        debug!("Navigating down");
         self.action_list.update(cx, |list, cx| {
             list.navigate_down(cx);
         });
+
+        let action = self.action_list.read(cx).get_selected_action().unwrap();
+        self.show_argument_input = match action.action_type {
+            ActionType::Desktop { accepts_args, .. } => accepts_args,
+            _ => false,
+        };
+        cx.focus_view(&self.query_input);
     }
 
     fn handle_tab(&mut self, _: &Tab, cx: &mut ViewContext<Self>) {
-        debug!("Tab pressed, switching focus");
-        cx.focus_view(&self.argument_input);
+        if self.show_argument_input {
+            debug!("Tab pressed, switching focus to argument input");
+            cx.focus_view(&self.argument_input);
+        }
     }
 
     fn handle_shift_tab(&mut self, _: &ShiftTab, cx: &mut ViewContext<Self>) {
@@ -133,7 +150,11 @@ impl Render for Crowbar {
                             .flex()
                             .flex_row()
                             .child(div().child(self.query_input.clone()))
-                            .child(div().child(self.argument_input.clone())),
+                            .child(div().child(if self.show_argument_input {
+                                div().child(self.argument_input.clone())
+                            } else {
+                                div()
+                            })),
                     ),
             )
     }
@@ -205,7 +226,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let text_input2 = cx.new_view(|cx| TextInput {
                         focus_handle: cx.focus_handle(),
                         content: "".into(),
-                        placeholder: "".into(),
+                        placeholder: "Query (Press Tab)".into(),
                         selected_range: 0..0,
                         selection_reversed: false,
                         marked_range: None,
@@ -225,6 +246,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             action_list: action_list.clone(),
                             focus_handle: cx.focus_handle(),
                             argument_input: text_input2.clone(),
+                            show_argument_input: false,
                         };
 
                         crowbar

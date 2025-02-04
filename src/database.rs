@@ -32,7 +32,9 @@ impl Action {
                 cmd.spawn()
                     .map_err(|e| (path.to_string_lossy().to_string(), e))
             }
-            ActionType::Desktop { exec, .. } => {
+            ActionType::Desktop {
+                exec, accepts_args, ..
+            } => {
                 let parts: Vec<String> = shlex::split(exec).unwrap_or_else(|| vec![exec.clone()]);
 
                 if parts.is_empty() {
@@ -44,8 +46,12 @@ impl Action {
                 let mut cmd = std::process::Command::new(&command);
                 cmd.args(base_args);
 
-                if let Some(args) = args {
-                    cmd.args(args);
+                if *accepts_args {
+                    if let Some(args) = args {
+                        cmd.args(args);
+                    }
+                } else if args.is_some() {
+                    error!("This desktop entry does not accept additional arguments");
                 }
 
                 cmd.spawn().map_err(|e| (exec.clone(), e))
@@ -81,6 +87,8 @@ pub enum ActionType {
         name: String,
         /// The command to execute, as specified in the Exec field
         exec: String,
+        /// Whether this desktop entry accepts additional arguments, see ./app_finder.rs
+        accepts_args: bool,
     },
 }
 
@@ -169,10 +177,14 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
                 (name, path.to_string_lossy().to_string()),
             )?;
         }
-        ActionType::Desktop { name, exec } => {
+        ActionType::Desktop {
+            name,
+            exec,
+            accepts_args,
+        } => {
             conn.execute(
-                "INSERT OR IGNORE INTO desktop_items (name, exec) VALUES (?1, ?2)",
-                (name, exec),
+                "INSERT OR IGNORE INTO desktop_items (name, exec, accepts_args) VALUES (?1, ?2, ?3)",
+                (name, exec, accepts_args),
             )?;
         }
     }
@@ -209,6 +221,7 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
                 -- Desktop-specific fields
                 d.exec as desktop_exec,
                 d.name as desktop_name,
+                d.accepts_args as desktop_accepts_args,
                 -- Execution statistics
                 COUNT(e.id) as execution_count,
                 COALESCE(GROUP_CONCAT(strftime('%H', e.execution_timestamp)), '') as execution_hours
@@ -229,7 +242,8 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
                 program_path,
                 program_name,
                 desktop_exec,
-                desktop_name
+                desktop_name,
+                desktop_accepts_args
         ",
     )?;
 
@@ -243,8 +257,9 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
         let program_name: Option<String> = row.get(4)?;
         let desktop_exec: Option<String> = row.get(5)?;
         let desktop_name: Option<String> = row.get(6)?;
-        let execution_count: i32 = row.get(7)?;
-        let hours_str: String = row.get(8)?;
+        let desktop_accepts_args: Option<bool> = row.get(7)?;
+        let execution_count: i32 = row.get(8)?;
+        let hours_str: String = row.get(9)?;
 
         let hours: Vec<f64> = hours_str
             .split(',')
@@ -262,6 +277,7 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
             "desktop" => ActionType::Desktop {
                 name: desktop_name.unwrap_or_else(|| action_name.clone()),
                 exec: desktop_exec.unwrap_or_default(),
+                accepts_args: desktop_accepts_args.unwrap_or_default(),
             },
 
             _ => panic!("Unknown action type: {}", action_type),
@@ -358,6 +374,7 @@ const TABLE_SCHEMAS: [&str; 4] = [
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         exec TEXT NOT NULL,
+        accepts_args BOOLEAN NOT NULL DEFAULT 0,
         UNIQUE(exec, name)
     )",
     "CREATE TABLE action_executions (

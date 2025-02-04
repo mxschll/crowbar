@@ -1,9 +1,4 @@
-use std::time::Duration;
-
-use gpui::{
-    black, bounce, ease_in_out, percentage, pulsating_between, px, svg, white, Animation,
-    AnimationExt, MouseButton, Transformation, VisualContext,
-};
+use gpui::white;
 use gpui::{
     div, prelude::FluentBuilder, rgb, uniform_list, InteractiveElement, IntoElement, ParentElement,
     ScrollStrategy, SharedString, Styled, UniformListScrollHandle, ViewContext,
@@ -55,6 +50,7 @@ impl ActionListView {
                         ActionType::Desktop {
                             name: elem.name.clone(),
                             exec: elem.exec.clone(),
+                            accepts_args: elem.takes_args,
                         },
                     );
                 });
@@ -113,7 +109,7 @@ impl ActionListView {
 
     pub fn set_filter(&mut self, new_filter: &str) {
         self.filter = new_filter.to_string().into();
-
+        self.selected_index = 0;
         self.list_scroll_handle
             .scroll_to_item(self.selected_index, ScrollStrategy::Top);
     }
@@ -156,33 +152,7 @@ fn loading_screen() -> gpui::Div {
                 .flex()
                 .items_center()
                 .justify_center()
-                .child("Scanning system executables..."), //.child(
-                                                          //    div().child(".").with_animation(
-                                                          //        "dot-1",
-                                                          //        Animation::new(Duration::from_secs(2))
-                                                          //            .repeat()
-                                                          //            .with_easing(pulsating_between(0., 1.)),
-                                                          //        move |this, delta| this.text_color(white().opacity(delta)),
-                                                          //    ),
-                                                          //)
-                                                          //.child(
-                                                          //    div().child(".").with_animation(
-                                                          //        "dot-2",
-                                                          //        Animation::new(Duration::from_secs(2))
-                                                          //            .repeat()
-                                                          //            .with_easing(move |t| pulsating_between(0., 1.)((t + 0.7) % 1.0)),
-                                                          //        move |this, delta| this.text_color(white().opacity(delta)),
-                                                          //    ),
-                                                          //)
-                                                          //.child(
-                                                          //    div().child(".").with_animation(
-                                                          //        "dot-3",
-                                                          //        Animation::new(Duration::from_secs(2))
-                                                          //            .repeat()
-                                                          //            .with_easing(move |t| pulsating_between(0., 1.)((t + 0.6) % 1.0)),
-                                                          //        move |this, delta| this.text_color(white().opacity(delta)),
-                                                          //    ),
-                                                          //),
+                .child("Scanning system executables..."),
         )
 }
 
@@ -242,12 +212,14 @@ impl gpui::Render for ActionListView {
                                             item.execution_count,
                                             is_selected,
                                         ),
-                                        ActionType::Desktop { name, exec } => render_action_item(
-                                            name,
-                                            exec,
-                                            item.execution_count,
-                                            is_selected,
-                                        ),
+                                        ActionType::Desktop { name, exec, .. } => {
+                                            render_action_item(
+                                                name,
+                                                exec,
+                                                item.execution_count,
+                                                is_selected,
+                                            )
+                                        }
                                     })
                                     .when(is_selected, |x| x.bg(rgb(0x404040)))
                             })
