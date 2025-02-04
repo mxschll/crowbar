@@ -9,7 +9,6 @@ mod text_input;
 
 use action_list::ActionListView;
 use database::ActionType;
-use executable_finder::scan_path_executables;
 
 use config::Config;
 use text_input::TextInput;
@@ -17,8 +16,8 @@ use text_input::TextInput;
 use std::error::Error;
 
 use gpui::{
-    actions, div, prelude::*, px, rgb, Action, App, AppContext, Bounds, FocusHandle, FocusableView,
-    KeyBinding, Size, View, ViewContext, WindowBounds, WindowOptions,
+    actions, div, prelude::*, px, rgb, Action, App, AppContext, Application, Bounds, Context,
+    Entity, FocusHandle, Focusable, KeyBinding, Size, Window, WindowBounds, WindowOptions,
 };
 
 use log::{debug, info};
@@ -49,21 +48,21 @@ actions!(
 
 struct Crowbar {
     config: Config,
-    query_input: View<TextInput>,
-    argument_input: View<TextInput>,
+    query_input: Entity<TextInput>,
+    argument_input: Entity<TextInput>,
     show_argument_input: bool,
-    action_list: View<ActionListView>,
+    action_list: Entity<ActionListView>,
     focus_handle: FocusHandle,
 }
 
-impl FocusableView for Crowbar {
-    fn focus_handle(&self, _: &AppContext) -> FocusHandle {
+impl Focusable for Crowbar {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
 impl Crowbar {
-    fn navigate_up(&mut self, _: &Up, cx: &mut ViewContext<Self>) {
+    fn navigate_up(&mut self, _: &Up, wd: &mut Window, cx: &mut Context<Self>) {
         self.action_list.update(cx, |list, cx| {
             list.navigate_up(cx);
         });
@@ -73,10 +72,10 @@ impl Crowbar {
             ActionType::Desktop { accepts_args, .. } => accepts_args,
             _ => false,
         };
-        cx.focus_view(&self.query_input);
+        cx.focus_view(&self.query_input, wd);
     }
 
-    fn navigate_down(&mut self, _: &Down, cx: &mut ViewContext<Self>) {
+    fn navigate_down(&mut self, _: &Down, wd: &mut Window, cx: &mut Context<Self>) {
         self.action_list.update(cx, |list, cx| {
             list.navigate_down(cx);
         });
@@ -86,27 +85,27 @@ impl Crowbar {
             ActionType::Desktop { accepts_args, .. } => accepts_args,
             _ => false,
         };
-        cx.focus_view(&self.query_input);
+        cx.focus_view(&self.query_input, wd);
     }
 
-    fn handle_tab(&mut self, _: &Tab, cx: &mut ViewContext<Self>) {
+    fn handle_tab(&mut self, _: &Tab, wd: &mut Window, cx: &mut Context<Self>) {
         if self.show_argument_input {
             debug!("Tab pressed, switching focus to argument input");
-            cx.focus_view(&self.argument_input);
+            cx.focus_view(&self.argument_input, wd);
         }
     }
 
-    fn handle_shift_tab(&mut self, _: &ShiftTab, cx: &mut ViewContext<Self>) {
+    fn handle_shift_tab(&mut self, _: &ShiftTab, wd: &mut Window, cx: &mut Context<Self>) {
         debug!("Shift Tab pressed, switching focus");
-        cx.focus_view(&self.query_input);
+        cx.focus_view(&self.query_input, wd);
     }
 
-    fn escape(&mut self, _: &Escape, cx: &mut ViewContext<Self>) {
+    fn escape(&mut self, _: &Escape, _: &mut Window, cx: &mut Context<Self>) {
         info!("Escape pressed, quitting application");
         cx.quit();
     }
 
-    fn handle_enter(&mut self, _: &Enter, cx: &mut ViewContext<Self>) {
+    fn handle_enter(&mut self, _: &Enter, _: &mut Window, cx: &mut Context<Self>) {
         if self.action_list.read(cx).run_selected_action() {
             self.query_input.update(cx, |input, _cx| {
                 input.reset();
@@ -121,7 +120,7 @@ impl Crowbar {
 }
 
 impl Render for Crowbar {
-    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("crowbar")
             .text_size(px(self.config.font_size))
@@ -163,11 +162,9 @@ impl Render for Crowbar {
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().init();
 
-    info!("Starting Crowbar application");
-
     let config = Config::load().unwrap();
 
-    App::new().run(|cx: &mut AppContext| {
+    Application::new().run(|cx: &mut App| {
         let size = Size {
             width: px(config.window_width),
             height: px(config.window_heigth),
@@ -206,12 +203,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |cx| {
-                    info!("Scanning for path executables");
-                    let executables = scan_path_executables().unwrap_or_default();
-                    info!("Found {} path executables", executables.len());
-
-                    let text_input = cx.new_view(|cx| TextInput {
+                |_, cx| {
+                    let text_input = cx.new(|cx| TextInput {
                         focus_handle: cx.focus_handle(),
                         content: "".into(),
                         placeholder: "Type here...".into(),
@@ -223,7 +216,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         is_selecting: false,
                     });
 
-                    let text_input2 = cx.new_view(|cx| TextInput {
+                    let text_input2 = cx.new(|cx| TextInput {
                         focus_handle: cx.focus_handle(),
                         content: "".into(),
                         placeholder: "Query (Press Tab)".into(),
@@ -235,11 +228,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         is_selecting: false,
                     });
 
-                    let action_list = cx.new_view(|cx| ActionListView::new(cx));
+                    let action_list = cx.new(|cx| ActionListView::new(cx));
                     let weak_ref = action_list.downgrade();
                     let weak_ref2 = weak_ref.clone();
 
-                    let crowbar = cx.new_view(|cx| {
+                    let crowbar = cx.new(|cx| {
                         let crowbar = Crowbar {
                             config,
                             query_input: text_input.clone(),
@@ -275,14 +268,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         cx.on_keyboard_layout_change({
             move |cx| {
-                window.update(cx, |_, cx| cx.notify()).ok();
+                window.update(cx, |_, _, cx| cx.notify()).ok();
             }
         })
         .detach();
 
         window
-            .update(cx, |view, cx| {
-                cx.focus_view(&view.query_input);
+            .update(cx, |view, window, cx| {
+                cx.focus_view(&view.query_input, window);
                 cx.activate(true);
             })
             .unwrap();

@@ -1,7 +1,7 @@
-use gpui::white;
 use gpui::{
-    div, prelude::FluentBuilder, rgb, uniform_list, InteractiveElement, IntoElement, ParentElement,
-    ScrollStrategy, SharedString, Styled, UniformListScrollHandle, ViewContext,
+    div, prelude::FluentBuilder, rgb, uniform_list, white, Context, InteractiveElement,
+    IntoElement, ParentElement, ScrollStrategy, SharedString, Styled, UniformListScrollHandle,
+    Window,
 };
 
 use crate::app_finder::scan_desktopentries;
@@ -21,7 +21,7 @@ pub struct ActionListView {
 }
 
 impl ActionListView {
-    pub fn new(cx: &mut ViewContext<Self>) -> ActionListView {
+    pub fn new(cx: &mut Context<Self>) -> ActionListView {
         let conn = initialize_database().unwrap();
 
         let actions = get_actions(&conn).unwrap();
@@ -73,7 +73,7 @@ impl ActionListView {
         }
     }
 
-    pub fn navigate_up(&mut self, cx: &mut ViewContext<Self>) {
+    pub fn navigate_up(&mut self, cx: &mut Context<Self>) {
         if !self.filtered_items().is_empty() {
             self.selected_index = self
                 .selected_index
@@ -87,7 +87,7 @@ impl ActionListView {
         }
     }
 
-    pub fn navigate_down(&mut self, cx: &mut ViewContext<Self>) {
+    pub fn navigate_down(&mut self, cx: &mut Context<Self>) {
         if !self.filtered_items().is_empty() {
             self.selected_index =
                 (self.selected_index + 1) % self.filtered_items().len().min(ITEMS_TO_SHOW);
@@ -182,7 +182,7 @@ fn render_action_item(
 }
 
 impl gpui::Render for ActionListView {
-    fn render(&mut self, cx: &mut ViewContext<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let items = self.filtered_items();
 
         if items.is_empty() && self.filter.is_empty() {
@@ -190,10 +190,10 @@ impl gpui::Render for ActionListView {
         } else {
             div().size_full().child(
                 uniform_list(
-                    cx.view().clone(),
+                    cx.entity().clone(),
                     "action-list",
                     items.len(),
-                    |this, range, _cx| {
+                    |this, range, _window, _cx| {
                         this.filtered_items()
                             .into_iter()
                             .skip(range.start)
