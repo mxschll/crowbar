@@ -6,11 +6,12 @@ use log::{error, info};
 use rusqlite::{Connection, Result};
 use shlex;
 use strsim::jaro_winkler;
+use open;
 
 #[derive(Debug, Clone)]
 pub struct Action {
-    id: i64,
-    name: String,
+    pub id: i64,
+    pub name: String,
     pub action_type: ActionType,
 }
 
@@ -19,10 +20,11 @@ impl Action {
         match &self.action_type {
             ActionType::Program { name, .. } => name,
             ActionType::Desktop { name, .. } => name,
+            ActionType::Url { url } => url,
         }
     }
 
-    pub fn execute(&self, args: Option<Vec<&str>>) {
+    pub fn execute(&self, args: Option<Vec<&str>>) -> Result<(), (String, std::io::Error)> {
         let result = match &self.action_type {
             ActionType::Program { path, .. } => {
                 let mut cmd = std::process::Command::new(path);
@@ -30,6 +32,7 @@ impl Action {
                     cmd.args(args);
                 }
                 cmd.spawn()
+                    .map(|_| ())
                     .map_err(|e| (path.to_string_lossy().to_string(), e))
             }
             ActionType::Desktop {
@@ -39,7 +42,7 @@ impl Action {
 
                 if parts.is_empty() {
                     error!("Empty command");
-                    return ();
+                    return Err((exec.clone(), std::io::Error::new(std::io::ErrorKind::InvalidInput, "Empty command")));
                 }
 
                 let (command, base_args) = (parts[0].clone(), &parts[1..]);
@@ -54,7 +57,17 @@ impl Action {
                     error!("This desktop entry does not accept additional arguments");
                 }
 
-                cmd.spawn().map_err(|e| (exec.clone(), e))
+                cmd.spawn()
+                    .map(|_| ())
+                    .map_err(|e| (exec.clone(), e))
+            }
+            ActionType::Url { url } => {
+                if let Err(e) = open::that(url) {
+                    eprintln!("Failed to open URL: {}", e);
+                    Err((url.clone(), std::io::Error::new(std::io::ErrorKind::Other, e)))
+                } else {
+                    Ok(())
+                }
             }
         };
 
@@ -67,6 +80,8 @@ impl Action {
             }
             Err((cmd, e)) => eprintln!("Failed to start {}: {}", cmd, e),
         }
+
+        Ok(())
     }
 }
 
@@ -90,13 +105,14 @@ pub enum ActionType {
         /// Whether this desktop entry accepts additional arguments, see ./app_finder.rs
         accepts_args: bool,
     },
+    Url { url: String },
 }
 
 #[derive(Debug, Clone)]
 pub struct ActionRanking {
     pub action: Action,
     pub execution_count: i32,
-    relevance_score: f64,
+    pub relevance_score: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -156,6 +172,7 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
     let item_type = match &action_type {
         ActionType::Program { .. } => "program",
         ActionType::Desktop { .. } => "desktop",
+        ActionType::Url { .. } => "url",
     };
 
     // Insert the action
@@ -185,6 +202,12 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
             conn.execute(
                 "INSERT OR IGNORE INTO desktop_items (name, exec, accepts_args) VALUES (?1, ?2, ?3)",
                 (name, exec, accepts_args),
+            )?;
+        }
+        ActionType::Url { url } => {
+            conn.execute(
+                "INSERT OR IGNORE INTO url_items (url) VALUES (?1)",
+                (url,),
             )?;
         }
     }
@@ -279,7 +302,9 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
                 exec: desktop_exec.unwrap_or_default(),
                 accepts_args: desktop_accepts_args.unwrap_or_default(),
             },
-
+            "url" => ActionType::Url {
+                url: action_name.clone(),
+            },
             _ => panic!("Unknown action type: {}", action_type),
         };
 
@@ -358,7 +383,7 @@ fn calculate_time_relevance(
     count_factor * time_factor * type_multiplier
 }
 
-const TABLE_SCHEMAS: [&str; 4] = [
+const TABLE_SCHEMAS: [&str; 5] = [
     "CREATE TABLE actions (
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
@@ -383,6 +408,10 @@ const TABLE_SCHEMAS: [&str; 4] = [
         execution_timestamp TEXT NOT NULL,
         FOREIGN KEY(action_id) REFERENCES actions(id)
     )",
+    "CREATE TABLE url_items (
+        id INTEGER PRIMARY KEY,
+        url TEXT NOT NULL UNIQUE
+    )",
 ];
 
 /// Verifies if database has the correct tables and columns.
@@ -392,6 +421,7 @@ fn verify_schema(conn: &Connection) -> Result<bool> {
         "program_items",
         "desktop_items",
         "action_executions",
+        "url_items",
     ];
     let mut schemas = Vec::new();
 

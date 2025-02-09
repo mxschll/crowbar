@@ -1,4 +1,5 @@
 mod action_list;
+mod actions;
 mod app_finder;
 mod common;
 mod config;

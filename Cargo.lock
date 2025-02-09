@@ -1043,6 +1043,7 @@ dependencies = [
  "env_logger",
  "gpui",
  "log",
+ "open",
  "rusqlite",
  "serde",
  "serde_json",
