@@ -1,5 +1,6 @@
 use core::str;
 use std::path::PathBuf;
+use anyhow;
 
 use crate::actions::action_item::ActionHandler;
 
@@ -9,12 +10,8 @@ pub struct BinHandler {
 }
 
 impl ActionHandler for BinHandler {
-    fn execute(&self, _input: &str) -> Result<(), String> {
-        let mut cmd = std::process::Command::new(self.path.clone());
-        cmd.spawn()
-            .map(|_| ())
-            .map_err(|e| (self.path.to_string_lossy().to_string(), e));
-
+    fn execute(&self, _input: &str) -> anyhow::Result<()> {
+        std::process::Command::new(self.path.clone()).spawn()?;
         Ok(())
     }
 

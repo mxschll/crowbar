@@ -1,7 +1,9 @@
 use gpui::{AnyElement, IntoElement, RenderOnce};
+use crate::database::Database;
+use std::sync::Arc;
 
 pub trait ActionHandler: Send + Sync {
-    fn execute(&self, input: &str) -> Result<(), String>;
+    fn execute(&self, input: &str) -> anyhow::Result<()>;
     fn clone_box(&self) -> Box<dyn ActionHandler>;
 }
 
@@ -49,13 +51,35 @@ impl Clone for Box<dyn RenderFn + Send + Sync> {
 
 #[derive(Clone, IntoElement)]
 pub struct ActionItem {
+    pub id: usize,
     pub name: String,
     pub tags: Vec<String>,
     pub function: String,
     pub handler: Box<dyn ActionHandler>,
     pub context_filter: Box<dyn ContextFilter>,
     pub render: Box<dyn RenderFn + Send + Sync>,
-    relevance: usize,
+    pub relevance: usize,
+    pub db: Arc<Database>,
+}
+
+impl Eq for ActionItem {}
+
+impl PartialEq for ActionItem {
+    fn eq(&self, other: &Self) -> bool {
+        self.relevance == other.relevance
+    }
+}
+
+impl PartialOrd for ActionItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ActionItem {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other.relevance.cmp(&self.relevance)
+    }
 }
 
 impl RenderOnce for ActionItem {
@@ -78,12 +102,15 @@ impl Clone for Box<dyn ContextFilter> {
 
 impl ActionItem {
     pub fn new<H, F, R>(
+        id: usize,
         name: String,
         tags: Vec<String>,
         function: String,
         handler: H,
         context_filter: F,
         render: R,
+        relevance: usize,
+        db: Arc<Database>,
     ) -> Self
     where
         H: ActionHandler + 'static,
@@ -91,13 +118,15 @@ impl ActionItem {
         R: RenderFn + 'static,
     {
         ActionItem {
+            id,
             name,
             tags,
             function,
             handler: Box::new(handler),
             context_filter: Box::new(context_filter),
             render: Box::new(render),
-            relevance: 0,
+            relevance,
+            db,
         }
     }
 
@@ -112,7 +141,9 @@ impl ActionItem {
         name_match || tag_match || function_match || self.context_filter.filter(input)
     }
 
-    pub fn execute(&self, input: &str) -> Result<(), String> {
+    pub fn execute(&self, input: &str) -> anyhow::Result<()> {
+        self.db.log_execution(self.id)?;
+        
         self.handler.execute(input)
     }
 }

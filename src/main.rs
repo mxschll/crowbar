@@ -9,7 +9,6 @@ mod executable_finder;
 mod text_input;
 
 use action_list::ActionListView;
-use database::ActionType;
 
 use config::Config;
 use text_input::TextInput;
@@ -17,8 +16,8 @@ use text_input::TextInput;
 use std::error::Error;
 
 use gpui::{
-    actions, div, prelude::*, px, rgb, Action, App, AppContext, Application, Bounds, Context,
-    Entity, FocusHandle, Focusable, KeyBinding, Size, Window, WindowBounds, WindowOptions,
+    actions, div, prelude::*, px, rgb, App, AppContext, Application, Bounds, Context, Entity,
+    FocusHandle, Focusable, KeyBinding, Size, Window, WindowBounds, WindowOptions,
 };
 
 use log::{debug, info};

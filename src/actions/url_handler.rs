@@ -1,6 +1,4 @@
-use core::str;
-
-use log::debug;
+use anyhow;
 
 use crate::actions::action_item::ActionHandler;
 
@@ -8,13 +6,9 @@ use crate::actions::action_item::ActionHandler;
 pub struct UrlHandler;
 
 impl ActionHandler for UrlHandler {
-    fn execute(&self, input: &str) -> Result<(), String> {
-        if let Err(e) = open::that(input) {
-            debug!("{}", e);
-            Ok(())
-        } else {
-            Ok(())
-        }
+    fn execute(&self, input: &str) -> anyhow::Result<()> {
+        open::that(input)?;
+        Ok(())
     }
 
     fn clone_box(&self) -> Box<dyn ActionHandler> {

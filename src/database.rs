@@ -1,13 +1,12 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, usize, sync::Arc};
 
 use anyhow::Context;
 use chrono::{self, Timelike};
-use gpui::{div, rgb, Element, ParentElement, Styled};
 use rusqlite::{Connection, Result};
 
 use crate::actions::{
-    action_item::ActionItem, action_list::ActionList, app_handler::AppHandler,
-    url_handler::UrlHandler,
+    action_list::ActionList,
+    action_factory::ActionFactory,
 };
 
 #[derive(Debug, Clone)]
@@ -30,9 +29,6 @@ pub enum ActionType {
         /// Whether this desktop entry accepts additional arguments, see ./app_finder.rs
         accepts_args: bool,
     },
-    Url {
-        url: String,
-    },
 }
 
 pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionType) -> Result<i64> {
@@ -40,7 +36,6 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
     let item_type = match &action_type {
         ActionType::Program { .. } => "program",
         ActionType::Desktop { .. } => "desktop",
-        ActionType::Url { .. } => "url",
     };
 
     // Insert the action
@@ -72,27 +67,14 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
                 (name, exec, accepts_args),
             )?;
         }
-        ActionType::Url { url } => {
-            conn.execute("INSERT OR IGNORE INTO url_items (url) VALUES (?1)", (url,))?;
-        }
     }
 
     Ok(action_id)
 }
 
-// pub fn log_execution(conn: &Connection, action: &Action) -> Result<()> {
-//     info!("Logging action execution");
-//     let timestamp = chrono::Local::now().to_rfc3339();
-//
-//     conn.execute(
-//         "INSERT INTO action_executions (action_id, execution_timestamp) VALUES (?1, ?2)",
-//         (action.id, timestamp),
-//     )?;
-//
-//     Ok(())
-// }
-
 pub fn get_actions(conn: &Connection) -> Result<ActionList> {
+    let db = Arc::new(Database { conn: initialize_database()? });
+    let factory = ActionFactory::new(db.clone());
     let current_time = chrono::Local::now();
     let current_hour = current_time.hour() as f64;
 
@@ -138,7 +120,7 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
     let mut rankings = Vec::new();
 
     let rows = stmt.query_map([], |row| {
-        let action_id: i64 = row.get(0)?;
+        let action_id: usize = row.get(0)?;
         let action_name: String = row.get(1)?;
         let action_type: String = row.get(2)?;
         let program_path: Option<String> = row.get(3)?;
@@ -160,68 +142,27 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
         let action_type = match action_type.as_str() {
             "program" => {
                 let display_name = program_name.unwrap_or_else(|| action_name.clone());
-                let program_path = program_path.unwrap();
+                let program_path = PathBuf::from(program_path.unwrap());
 
-                ActionItem::new(
-                    display_name.clone(),
-                    vec![],
-                    "Runs Binary".to_string(),
-                    UrlHandler,
-                    |input: &str| input.contains("http"),
-                    move || {
-                        div()
-                            .flex()
-                            .gap_4()
-                            .child(div().flex_none().child(display_name.clone()))
-                            .child(
-                                div()
-                                    .flex_grow()
-                                    .child(program_path.clone())
-                                    .text_color(rgb(0x3B4B4F)),
-                            )
-                            .child(
-                                div()
-                                    .child(format!("{}", execution_count))
-                                    .text_color(rgb(0x3B4B4F)),
-                            )
-                            .into_any()
-                    },
+                factory.create_program_action(
+                    action_id,
+                    display_name,
+                    program_path,
+                    execution_count,
+                    relevance_score,
                 )
             }
 
             "desktop" => {
-                let display_name = program_name.unwrap_or_else(|| action_name.clone());
+                let display_name = desktop_name.unwrap_or_else(|| action_name.clone());
                 let program_path = desktop_exec.unwrap();
 
-                ActionItem::new(
-                    display_name.clone(),
-                    vec![],
-                    "Runs Application".to_string(),
-                    AppHandler {
-                        path: PathBuf::from(program_path.clone()),
-                    },
-                    |input: &str| input.contains("http"),
-                    {
-                        let display_name = display_name.clone();
-                        move || {
-                            div()
-                                .flex()
-                                .gap_4()
-                                .child(div().flex_none().child(display_name.clone()))
-                                .child(
-                                    div()
-                                        .flex_grow()
-                                        .child(program_path.clone())
-                                        .text_color(rgb(0x3B4B4F)),
-                                )
-                                .child(
-                                    div()
-                                        .child(format!("{}", execution_count))
-                                        .text_color(rgb(0x3B4B4F)),
-                                )
-                                .into_any()
-                        }
-                    },
+                factory.create_desktop_action(
+                    action_id,
+                    display_name,
+                    program_path,
+                    execution_count,
+                    relevance_score,
                 )
             }
 
@@ -260,7 +201,9 @@ fn calculate_time_relevance(
     hours: &[f64],
     execution_count: i32,
     action_type: &str,
-) -> f64 {
+) -> usize {
+    const BASE_SCORE: usize = 1000; // Base score to ensure non-zero results
+
     // Desktop items get a 10% boost in relevance
     let type_multiplier = match action_type {
         "desktop" => 1.1,
@@ -268,7 +211,7 @@ fn calculate_time_relevance(
     };
 
     if hours.is_empty() {
-        return 1.0 * type_multiplier;
+        return (BASE_SCORE as f64 * type_multiplier) as usize;
     }
 
     // Calculate time-based weight
@@ -291,8 +234,8 @@ fn calculate_time_relevance(
     // Base relevance from execution count (always ≥ 1.0)
     let count_factor = 1.0 + (execution_count as f64).ln();
 
-    // Final score combines both factors, ensuring result is ≥ 1.0
-    count_factor * time_factor * type_multiplier
+    // Final score combines all factors and converts to usize
+    (BASE_SCORE as f64 * count_factor * time_factor * type_multiplier) as usize
 }
 
 const TABLE_SCHEMAS: [&str; 5] = [
@@ -413,4 +356,35 @@ pub fn initialize_database() -> Result<Connection> {
     }
 
     Ok(conn)
+}
+
+#[derive(Debug)]
+pub struct Database {
+    conn: Connection,
+}
+
+impl Database {
+    pub fn new() -> Result<Self> {
+        let conn = initialize_database()?;
+        Ok(Database { conn })
+    }
+
+    pub fn insert_action(&self, action_name: &str, action_type: ActionType) -> Result<i64> {
+        insert_action(&self.conn, action_name, action_type)
+    }
+
+    pub fn log_execution(&self, action_id: usize) -> Result<()> {
+        let timestamp = chrono::Local::now().to_rfc3339();
+        
+        self.conn.execute(
+            "INSERT INTO action_executions (action_id, execution_timestamp) VALUES (?1, ?2)",
+            (action_id, timestamp),
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_actions(&self) -> Result<ActionList> {
+        get_actions(&self.conn)
+    }
 }

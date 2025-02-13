@@ -18,13 +18,14 @@ impl ActionList {
             return self.actions.iter().collect();
         }
 
-        self.actions
+        let mut actions: Vec<&ActionItem> = self
+            .actions
             .iter()
             .filter(|item| item.should_display(search_term))
-            .collect()
-    }
+            .collect();
 
-    pub fn collect(self) -> Vec<ActionItem> {
-        self.actions
+        actions.sort();
+
+        actions
     }
 }
