@@ -4,12 +4,11 @@ use gpui::{
     Window,
 };
 
+use crate::actions::action_item::ActionItem;
+use crate::actions::action_list::ActionList;
 use crate::app_finder::scan_desktopentries;
-use crate::database::{
-    get_actions, initialize_database, insert_action, Action, ActionList, ActionRanking, ActionType,
-};
+use crate::database::{get_actions, initialize_database, insert_action, ActionType};
 use crate::executable_finder::scan_path_executables;
-use url::Url;
 
 const ITEMS_TO_SHOW: usize = 30;
 
@@ -98,30 +97,8 @@ impl ActionListView {
         }
     }
 
-    fn filtered_items(&self) -> Vec<ActionRanking> {
-        if !self.filter.is_empty() {
-            if let Ok(url) = Url::parse(&self.filter) {
-                return vec![ActionRanking {
-                    action: Action {
-                        name: "Open URL".into(),
-                        action_type: ActionType::Url {
-                            url: url.to_string(),
-                        },
-                        id: -1,
-                    },
-                    execution_count: 0,
-                    relevance_score: 1.0,
-                }];
-            }
-        }
-
-        self.actions
-            .clone()
-            .fuzzy_search(&self.filter)
-            .ranked()
-            .collect()
-            .into_iter()
-            .collect()
+    fn filtered_items(&self) -> Vec<&ActionItem> {
+        self.actions.fuzzy_search(&self.filter)
     }
 
     pub fn set_filter(&mut self, new_filter: &str) {
@@ -135,19 +112,16 @@ impl ActionListView {
         self.args = args.split_whitespace().map(str::to_string).collect();
     }
 
-    pub fn get_selected_action(&self) -> Option<Action> {
+    pub fn get_selected_action(&self) -> Option<&ActionItem> {
         self.filtered_items()
             .get(self.selected_index)
-            .map(|item| item.action.clone())
+            .map(|item| &**item)
     }
 
     pub fn run_selected_action(&self) -> bool {
+        let filter = &self.filter.to_string();
         if let Some(action) = self.get_selected_action() {
-            action.execute(if self.args.is_empty() {
-                None
-            } else {
-                Some(self.args.iter().map(|s| s.as_str()).collect())
-            });
+            let _ = action.execute(filter);
             return true;
         }
 
@@ -222,25 +196,7 @@ impl gpui::Render for ActionListView {
                                     .id(index + range.start)
                                     .px_4()
                                     .py_2()
-                                    .child(match &item.action.action_type {
-                                        ActionType::Program { name, path } => render_action_item(
-                                            name,
-                                            &path.to_string_lossy(),
-                                            item.execution_count,
-                                            is_selected,
-                                        ),
-                                        ActionType::Desktop { name, exec, .. } => {
-                                            render_action_item(
-                                                name,
-                                                exec,
-                                                item.execution_count,
-                                                is_selected,
-                                            )
-                                        }
-                                        ActionType::Url { url } => {
-                                            render_action_item("Open URL", url, item.execution_count, is_selected)
-                                        }
-                                    })
+                                    .child((*item).clone())
                                     .when(is_selected, |x| x.bg(rgb(0x404040)))
                             })
                             .collect()

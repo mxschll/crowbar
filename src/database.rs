@@ -2,88 +2,13 @@ use std::{env, fs, path::PathBuf};
 
 use anyhow::Context;
 use chrono::{self, Timelike};
-use log::{error, info};
+use gpui::{div, rgb, Element, ParentElement, Styled};
 use rusqlite::{Connection, Result};
-use shlex;
-use strsim::jaro_winkler;
-use open;
 
-#[derive(Debug, Clone)]
-pub struct Action {
-    pub id: i64,
-    pub name: String,
-    pub action_type: ActionType,
-}
-
-impl Action {
-    fn display_name(&self) -> &str {
-        match &self.action_type {
-            ActionType::Program { name, .. } => name,
-            ActionType::Desktop { name, .. } => name,
-            ActionType::Url { url } => url,
-        }
-    }
-
-    pub fn execute(&self, args: Option<Vec<&str>>) -> Result<(), (String, std::io::Error)> {
-        let result = match &self.action_type {
-            ActionType::Program { path, .. } => {
-                let mut cmd = std::process::Command::new(path);
-                if let Some(args) = args {
-                    cmd.args(args);
-                }
-                cmd.spawn()
-                    .map(|_| ())
-                    .map_err(|e| (path.to_string_lossy().to_string(), e))
-            }
-            ActionType::Desktop {
-                exec, accepts_args, ..
-            } => {
-                let parts: Vec<String> = shlex::split(exec).unwrap_or_else(|| vec![exec.clone()]);
-
-                if parts.is_empty() {
-                    error!("Empty command");
-                    return Err((exec.clone(), std::io::Error::new(std::io::ErrorKind::InvalidInput, "Empty command")));
-                }
-
-                let (command, base_args) = (parts[0].clone(), &parts[1..]);
-                let mut cmd = std::process::Command::new(&command);
-                cmd.args(base_args);
-
-                if *accepts_args {
-                    if let Some(args) = args {
-                        cmd.args(args);
-                    }
-                } else if args.is_some() {
-                    error!("This desktop entry does not accept additional arguments");
-                }
-
-                cmd.spawn()
-                    .map(|_| ())
-                    .map_err(|e| (exec.clone(), e))
-            }
-            ActionType::Url { url } => {
-                if let Err(e) = open::that(url) {
-                    eprintln!("Failed to open URL: {}", e);
-                    Err((url.clone(), std::io::Error::new(std::io::ErrorKind::Other, e)))
-                } else {
-                    Ok(())
-                }
-            }
-        };
-
-        match result {
-            Ok(_) => {
-                info!("Launching {}", self.display_name());
-                if let Ok(conn) = initialize_database() {
-                    let _ = log_execution(&conn, &self);
-                }
-            }
-            Err((cmd, e)) => eprintln!("Failed to start {}: {}", cmd, e),
-        }
-
-        Ok(())
-    }
-}
+use crate::actions::{
+    action_item::ActionItem, action_list::ActionList, app_handler::AppHandler,
+    url_handler::UrlHandler,
+};
 
 #[derive(Debug, Clone)]
 pub enum ActionType {
@@ -105,66 +30,9 @@ pub enum ActionType {
         /// Whether this desktop entry accepts additional arguments, see ./app_finder.rs
         accepts_args: bool,
     },
-    Url { url: String },
-}
-
-#[derive(Debug, Clone)]
-pub struct ActionRanking {
-    pub action: Action,
-    pub execution_count: i32,
-    pub relevance_score: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ActionList {
-    actions: Vec<ActionRanking>,
-}
-
-impl ActionList {
-    fn new(actions: Vec<ActionRanking>) -> Self {
-        ActionList { actions }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.actions.is_empty()
-    }
-
-    pub fn fuzzy_search(self, search_term: &str) -> Self {
-        if search_term.is_empty() {
-            return self;
-        }
-
-        let filtered = self
-            .actions
-            .into_iter()
-            .filter_map(|rank| {
-                let similarity = jaro_winkler(
-                    &rank.action.name.to_lowercase(),
-                    &search_term.to_lowercase(),
-                );
-                if similarity > 0.6 {
-                    Some(ActionRanking {
-                        relevance_score: rank.relevance_score * similarity,
-                        ..rank
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        ActionList { actions: filtered }
-    }
-
-    pub fn ranked(mut self) -> Self {
-        self.actions
-            .sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
-        self
-    }
-
-    pub fn collect(self) -> Vec<ActionRanking> {
-        self.actions
-    }
+    Url {
+        url: String,
+    },
 }
 
 pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionType) -> Result<i64> {
@@ -205,27 +73,24 @@ pub fn insert_action(conn: &Connection, action_name: &str, action_type: ActionTy
             )?;
         }
         ActionType::Url { url } => {
-            conn.execute(
-                "INSERT OR IGNORE INTO url_items (url) VALUES (?1)",
-                (url,),
-            )?;
+            conn.execute("INSERT OR IGNORE INTO url_items (url) VALUES (?1)", (url,))?;
         }
     }
 
     Ok(action_id)
 }
 
-pub fn log_execution(conn: &Connection, action: &Action) -> Result<()> {
-    info!("Logging action execution");
-    let timestamp = chrono::Local::now().to_rfc3339();
-
-    conn.execute(
-        "INSERT INTO action_executions (action_id, execution_timestamp) VALUES (?1, ?2)",
-        (action.id, timestamp),
-    )?;
-
-    Ok(())
-}
+// pub fn log_execution(conn: &Connection, action: &Action) -> Result<()> {
+//     info!("Logging action execution");
+//     let timestamp = chrono::Local::now().to_rfc3339();
+//
+//     conn.execute(
+//         "INSERT INTO action_executions (action_id, execution_timestamp) VALUES (?1, ?2)",
+//         (action.id, timestamp),
+//     )?;
+//
+//     Ok(())
+// }
 
 pub fn get_actions(conn: &Connection) -> Result<ActionList> {
     let current_time = chrono::Local::now();
@@ -293,30 +158,77 @@ pub fn get_actions(conn: &Connection) -> Result<ActionList> {
             calculate_time_relevance(current_hour, &hours, execution_count, &action_type);
 
         let action_type = match action_type.as_str() {
-            "program" => ActionType::Program {
-                name: program_name.unwrap_or_else(|| action_name.clone()),
-                path: PathBuf::from(program_path.unwrap_or_default()),
-            },
-            "desktop" => ActionType::Desktop {
-                name: desktop_name.unwrap_or_else(|| action_name.clone()),
-                exec: desktop_exec.unwrap_or_default(),
-                accepts_args: desktop_accepts_args.unwrap_or_default(),
-            },
-            "url" => ActionType::Url {
-                url: action_name.clone(),
-            },
+            "program" => {
+                let display_name = program_name.unwrap_or_else(|| action_name.clone());
+                let program_path = program_path.unwrap();
+
+                ActionItem::new(
+                    display_name.clone(),
+                    vec![],
+                    "Runs Binary".to_string(),
+                    UrlHandler,
+                    |input: &str| input.contains("http"),
+                    move || {
+                        div()
+                            .flex()
+                            .gap_4()
+                            .child(div().flex_none().child(display_name.clone()))
+                            .child(
+                                div()
+                                    .flex_grow()
+                                    .child(program_path.clone())
+                                    .text_color(rgb(0x3B4B4F)),
+                            )
+                            .child(
+                                div()
+                                    .child(format!("{}", execution_count))
+                                    .text_color(rgb(0x3B4B4F)),
+                            )
+                            .into_any()
+                    },
+                )
+            }
+
+            "desktop" => {
+                let display_name = program_name.unwrap_or_else(|| action_name.clone());
+                let program_path = desktop_exec.unwrap();
+
+                ActionItem::new(
+                    display_name.clone(),
+                    vec![],
+                    "Runs Application".to_string(),
+                    AppHandler {
+                        path: PathBuf::from(program_path.clone()),
+                    },
+                    |input: &str| input.contains("http"),
+                    {
+                        let display_name = display_name.clone();
+                        move || {
+                            div()
+                                .flex()
+                                .gap_4()
+                                .child(div().flex_none().child(display_name.clone()))
+                                .child(
+                                    div()
+                                        .flex_grow()
+                                        .child(program_path.clone())
+                                        .text_color(rgb(0x3B4B4F)),
+                                )
+                                .child(
+                                    div()
+                                        .child(format!("{}", execution_count))
+                                        .text_color(rgb(0x3B4B4F)),
+                                )
+                                .into_any()
+                        }
+                    },
+                )
+            }
+
             _ => panic!("Unknown action type: {}", action_type),
         };
 
-        Ok(ActionRanking {
-            action: Action {
-                id: action_id,
-                name: action_name,
-                action_type,
-            },
-            execution_count,
-            relevance_score,
-        })
+        Ok(action_type)
     })?;
 
     for row in rows {

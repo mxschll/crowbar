@@ -67,12 +67,6 @@ impl Crowbar {
         self.action_list.update(cx, |list, cx| {
             list.navigate_up(cx);
         });
-
-        let action = self.action_list.read(cx).get_selected_action().unwrap();
-        self.show_argument_input = match action.action_type {
-            ActionType::Desktop { accepts_args, .. } => accepts_args,
-            _ => false,
-        };
         cx.focus_view(&self.query_input, wd);
     }
 
@@ -80,12 +74,6 @@ impl Crowbar {
         self.action_list.update(cx, |list, cx| {
             list.navigate_down(cx);
         });
-
-        let action = self.action_list.read(cx).get_selected_action().unwrap();
-        self.show_argument_input = match action.action_type {
-            ActionType::Desktop { accepts_args, .. } => accepts_args,
-            _ => false,
-        };
         cx.focus_view(&self.query_input, wd);
     }
 
