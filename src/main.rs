@@ -1,4 +1,4 @@
-mod action_list;
+mod action_list_view;
 mod actions;
 mod app_finder;
 mod common;
@@ -8,7 +8,7 @@ mod desktop_entry_categories;
 mod executable_finder;
 mod text_input;
 
-use action_list::ActionListView;
+use action_list_view::ActionListView;
 
 use config::Config;
 use text_input::TextInput;
@@ -120,8 +120,10 @@ impl Render for Crowbar {
             .on_action(cx.listener(Self::handle_tab))
             .on_action(cx.listener(Self::handle_shift_tab))
             .font_family(self.config.font_family.clone())
-            .bg(rgb(0x141D21))
-            .text_color(rgb(0xA4FBFE))
+            .bg(rgb(0x282828))
+            .border_1()
+            .border_color(rgb(0xF0B62F))
+            .text_color(rgb(0xF0B62F))
             .flex()
             .flex_col()
             .size_full()
@@ -195,7 +197,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let text_input = cx.new(|cx| TextInput {
                         focus_handle: cx.focus_handle(),
                         content: "".into(),
-                        placeholder: "Type here...".into(),
+                        placeholder: "Type to search or enter a command...".into(),
                         selected_range: 0..0,
                         selection_reversed: false,
                         marked_range: None,

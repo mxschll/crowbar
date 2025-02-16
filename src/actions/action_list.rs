@@ -9,13 +9,11 @@ impl ActionList {
         ActionList { actions }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.actions.is_empty()
-    }
-
     pub fn fuzzy_search(&self, search_term: &str) -> Vec<&ActionItem> {
         if search_term.is_empty() {
-            return self.actions.iter().collect();
+            let mut actions: Vec<&ActionItem> = self.actions.iter().collect();
+            actions.sort();
+            return actions;
         }
 
         let mut actions: Vec<&ActionItem> = self

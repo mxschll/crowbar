@@ -1,6 +1,24 @@
-use gpui::{AnyElement, IntoElement, RenderOnce};
 use crate::database::Database;
+use gpui::{AnyElement, IntoElement, RenderOnce};
+use std::fmt;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionId {
+    /// Built-in actions with string identifiers
+    Builtin(&'static str),
+    /// Dynamic actions with database IDs
+    Dynamic(usize),
+}
+
+impl ActionId {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Builtin(id) => id,
+            Self::Dynamic(id) => Box::leak(format!("{}", id).into_boxed_str()),
+        }
+    }
+}
 
 pub trait ActionHandler: Send + Sync {
     fn execute(&self, input: &str) -> anyhow::Result<()>;
@@ -49,9 +67,15 @@ impl Clone for Box<dyn RenderFn + Send + Sync> {
     }
 }
 
+pub trait ActionDefinition: Send + Sync {
+    fn create_action(&self, db: Arc<Database>) -> ActionItem;
+    fn get_id(&self) -> ActionId;
+    fn get_name(&self) -> String;
+}
+
 #[derive(Clone, IntoElement)]
 pub struct ActionItem {
-    pub id: usize,
+    pub id: ActionId,
     pub name: String,
     pub tags: Vec<String>,
     pub function: String,
@@ -102,7 +126,7 @@ impl Clone for Box<dyn ContextFilter> {
 
 impl ActionItem {
     pub fn new<H, F, R>(
-        id: usize,
+        id: ActionId,
         name: String,
         tags: Vec<String>,
         function: String,
@@ -130,20 +154,67 @@ impl ActionItem {
         }
     }
 
+    const FUZZY_MATCH_THRESHOLD: f64 = 0.8;
+    const MAX_LENGTH_RATIO: f64 = 1.5;
+
     pub fn should_display(&self, input: &str) -> bool {
-        let name_match = self.name.to_lowercase().contains(&input.to_lowercase());
+        if input.is_empty() {
+            return true;
+        }
+
+        let input_lower = input.to_lowercase();
+        let name_lower = self.name.to_lowercase();
+
+        // Exact substring match gets priority
+        if name_lower.contains(&input_lower) {
+            return true;
+        }
+
+        // Check if input is disproportionately long compared to the name
+        let length_ratio = input_lower.len() as f64 / name_lower.len() as f64;
+        if length_ratio > Self::MAX_LENGTH_RATIO {
+            // Skip fuzzy matching if input is too long, but still check other criteria
+            let tag_match = self
+                .tags
+                .iter()
+                .any(|tag| tag.to_lowercase().contains(&input_lower));
+            let function_match = self.function.to_lowercase().contains(&input_lower);
+            return tag_match || function_match || self.context_filter.filter(input);
+        }
+
+        // For shorter inputs, try fuzzy matching on word boundaries
+        let words: Vec<&str> = name_lower.split_whitespace().collect();
+        let matches_word_start = words.iter().any(|word| {
+            if input_lower.len() <= word.len() {
+                let similarity = strsim::jaro_winkler(&input_lower, &word[..input_lower.len()]);
+                similarity >= Self::FUZZY_MATCH_THRESHOLD
+            } else {
+                false
+            }
+        });
+
+        if matches_word_start {
+            return true;
+        }
+
+        // If no word-start matches, try full fuzzy match
+        let name_similarity = strsim::jaro_winkler(&input_lower, &name_lower);
+        if name_similarity >= Self::FUZZY_MATCH_THRESHOLD {
+            return true;
+        }
+
+        // Fall back to other matching criteria
         let tag_match = self
             .tags
             .iter()
-            .any(|tag| tag.to_lowercase().contains(&input.to_lowercase()));
-        let function_match = self.function.to_lowercase().contains(&input.to_lowercase());
+            .any(|tag| tag.to_lowercase().contains(&input_lower));
+        let function_match = self.function.to_lowercase().contains(&input_lower);
 
-        name_match || tag_match || function_match || self.context_filter.filter(input)
+        tag_match || function_match || self.context_filter.filter(input)
     }
 
     pub fn execute(&self, input: &str) -> anyhow::Result<()> {
-        self.db.log_execution(self.id)?;
-        
+        self.db.log_execution(self.id.as_str())?;
         self.handler.execute(input)
     }
 }

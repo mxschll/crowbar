@@ -6,9 +6,12 @@ use gpui::{
 
 use crate::actions::action_item::ActionItem;
 use crate::actions::action_list::ActionList;
-use crate::app_finder::scan_desktopentries;
-use crate::database::{get_actions, initialize_database, insert_action, ActionType};
-use crate::executable_finder::scan_path_executables;
+use crate::actions::registry::ActionRegistry;
+use crate::actions::scanner::ActionScanner;
+use crate::database::Database;
+use log::info;
+use std::sync::Arc;
+use std::time::Instant;
 
 const ITEMS_TO_SHOW: usize = 30;
 
@@ -22,47 +25,38 @@ pub struct ActionListView {
 
 impl ActionListView {
     pub fn new(cx: &mut Context<Self>) -> ActionListView {
-        let conn = initialize_database().unwrap();
+        info!("Starting database initialization");
+        let db_start = Instant::now();
+        let db = Arc::new(Database::new().unwrap());
+        info!("Database initialization took {:?}", db_start.elapsed());
 
-        let actions = get_actions(&conn).unwrap();
-
-        if actions.is_empty() {
+        // Check if we need to scan for dynamic actions
+        if ActionScanner::needs_scan(db.connection()) {
+            info!("No dynamic actions found, starting background scan");
             cx.spawn(|view, mut cx| async move {
-                let conn = initialize_database().unwrap();
-
-                let executables = scan_path_executables().unwrap_or_default();
-                executables.iter().for_each(|elem| {
-                    let _ = insert_action(
-                        &conn,
-                        &elem.name,
-                        crate::database::ActionType::Program {
-                            name: elem.name.clone(),
-                            path: elem.path.clone(),
-                        },
-                    );
-                });
-
-                let desktopentries = scan_desktopentries();
-                desktopentries.iter().for_each(|elem| {
-                    let _ = insert_action(
-                        &conn,
-                        &elem.name,
-                        ActionType::Desktop {
-                            name: elem.name.clone(),
-                            exec: elem.exec.clone(),
-                            accepts_args: elem.takes_args,
-                        },
-                    );
-                });
-
+                let db = Arc::new(Database::new().unwrap());
+                ActionScanner::scan_system(&db);
                 let _ = view.update(&mut cx, |this, cx| {
-                    let actions = get_actions(&conn).unwrap();
-                    this.actions = actions;
+                    let db = Arc::new(Database::new().unwrap());
+                    let registry = ActionRegistry::new(db);
+                    this.actions = ActionList::new(registry.get_all_actions());
                     cx.notify();
                 });
             })
             .detach();
         }
+
+        let registry = ActionRegistry::new(db.clone());
+
+        info!("Creating default actions");
+        let default_start = Instant::now();
+        let all_actions = registry.get_all_actions();
+        info!(
+            "Creating default actions took {:?}",
+            default_start.elapsed()
+        );
+
+        let actions = ActionList::new(all_actions);
 
         Self {
             actions,
@@ -147,31 +141,6 @@ fn loading_screen() -> gpui::Div {
         )
 }
 
-fn render_action_item(
-    name: &str,
-    details: &str,
-    execution_count: i32,
-    is_selected: bool,
-) -> gpui::Div {
-    let secondary_text = |elem: gpui::Div| {
-        elem.text_color(rgb(0x3B4B4F))
-            .when(is_selected, |elem| elem.text_color(rgb(0x91B0B0)))
-    };
-
-    div()
-        .flex()
-        .gap_4()
-        .child(div().flex_none().child(name.to_string()))
-        .child(
-            secondary_text(div().flex_grow()).child(if details.len() > 50 {
-                format!("{}...", &details[..50])
-            } else {
-                details.to_string()
-            }),
-        )
-        .child(secondary_text(div()).child(format!("{} launches", execution_count)))
-}
-
 impl gpui::Render for ActionListView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let items = self.filtered_items();
@@ -197,7 +166,7 @@ impl gpui::Render for ActionListView {
                                     .px_4()
                                     .py_2()
                                     .child((*item).clone())
-                                    .when(is_selected, |x| x.bg(rgb(0x404040)))
+                                    .when(is_selected, |x| x.bg(rgb(0x3D3628)))
                             })
                             .collect()
                     },

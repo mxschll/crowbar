@@ -14,6 +14,8 @@ use std::fs::{self, File};
 use std::io::{self, Read};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
+use log::info;
 
 use crate::common::expand_tilde;
 
@@ -57,22 +59,37 @@ pub enum FileType {
 /// # TODO
 /// Track all symlink names pointing to each executable
 pub fn scan_path_executables() -> io::Result<Vec<FileInfo>> {
-    let paths = std::env::var("PATH").unwrap_or_default();
+    let start = Instant::now();
+    info!("Starting PATH executable scan");
+    
     let mut executables = Vec::new();
     let mut seen_paths = HashSet::new();
 
-    // Scan PATH directories
-    for dir in paths.split(':') {
-        let _ = scan_directory(Path::new(dir), &mut executables, &mut seen_paths);
+    // Scan PATH
+    if let Some(path) = std::env::var_os("PATH") {
+        let path_start = Instant::now();
+        for dir in std::env::split_paths(&path) {
+            let dir_start = Instant::now();
+            if let Err(e) = scan_directory(&dir, &mut executables, &mut seen_paths) {
+                info!("Error scanning directory {:?}: {}", dir, e);
+            }
+            info!("Scanning directory {:?} took {:?}", dir, dir_start.elapsed());
+        }
+        info!("Scanning PATH directories took {:?}", path_start.elapsed());
     }
 
-    // Scan additional user-specific directories
-    for dir in get_additional_paths() {
-        let _ = scan_directory(&dir, &mut executables, &mut seen_paths);
+    // Scan additional Unix paths
+    let additional_start = Instant::now();
+    for path in get_additional_paths() {
+        let path_start = Instant::now();
+        if let Err(e) = scan_directory(&path, &mut executables, &mut seen_paths) {
+            info!("Error scanning additional path {:?}: {}", path, e);
+        }
+        info!("Scanning additional path {:?} took {:?}", path, path_start.elapsed());
     }
+    info!("Scanning additional paths took {:?}", additional_start.elapsed());
 
-    executables.sort_by(|a, b| a.path.cmp(&b.path));
-
+    info!("Total executable scan took {:?}, found {} executables", start.elapsed(), executables.len());
     Ok(executables)
 }
 
@@ -90,53 +107,31 @@ fn scan_directory(
     executables: &mut Vec<FileInfo>,
     seen_paths: &mut HashSet<PathBuf>,
 ) -> io::Result<()> {
+    let start = Instant::now();
+    
+    if !dir.is_dir() {
+        return Ok(());
+    }
+
+    let read_start = Instant::now();
     let entries = fs::read_dir(dir)?;
+    info!("Reading directory {:?} took {:?}", dir, read_start.elapsed());
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry?;
         let path = entry.path();
-        if path.is_dir() {
+
+        if seen_paths.contains(&path) {
             continue;
         }
+        seen_paths.insert(path.clone());
 
-        // Special handling for snap symlinks
-        if path.starts_with("/snap/bin") && path.is_symlink() {
-            if seen_paths.contains(&path) {
-                continue;
-            }
-
-            if is_executable(&path)? {
-                if let Some(exe_info) = get_executable_info(&path)? {
-                    // Use the symlink path itself for snap executables
-                    executables.push(FileInfo {
-                        name: path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown")
-                            .to_string(),
-                        path: path.clone(),
-                        file_type: exe_info.file_type,
-                    });
-
-                    seen_paths.insert(path.clone());
-                }
-            }
-            continue;
-        }
-
-        // Normal handling for other executables
-        let canonical_path = fs::canonicalize(&path)?;
-        if seen_paths.contains(&canonical_path) {
-            continue;
-        }
-
-        if is_executable(&path)? {
-            if let Some(exe_info) = get_executable_info(&path)? {
-                seen_paths.insert(canonical_path.clone());
-                executables.push(exe_info);
-            }
+        if let Ok(Some(info)) = get_executable_info(&path) {
+            executables.push(info);
         }
     }
 
+    info!("Scanning directory {:?} completed in {:?}", dir, start.elapsed());
     Ok(())
 }
 

@@ -572,7 +572,6 @@ impl Element for TextElement {
 impl Render for TextInput {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .bg(rgb(0x141D21))
             .flex()
             .key_context("textinput")
             .track_focus(&self.focus_handle(cx))
