@@ -30,21 +30,21 @@ impl ActionRegistry {
         registry.register_builtin(Box::new(UrlHandler));
 
         // Load dynamic actions from database using the Database instance's method
-        info!("Loading dynamic actions...");
-        match db.get_actions() {
-            Ok(dynamic_actions) => {
-                println!(
-                    "Successfully loaded {} dynamic actions",
-                    dynamic_actions.len()
-                );
-                for action in dynamic_actions {
-                    registry.register_dynamic(action);
-                }
-            }
-            Err(e) => {
-                println!("Error loading dynamic actions: {:?}", e);
-            }
-        }
+        // info!("Loading dynamic actions...");
+        // match db.get_actions() {
+        //     Ok(dynamic_actions) => {
+        //         println!(
+        //             "Successfully loaded {} dynamic actions",
+        //             dynamic_actions.len()
+        //         );
+        //         for action in dynamic_actions {
+        //             registry.register_dynamic(action);
+        //         }
+        //     }
+        //     Err(e) => {
+        //         println!("Error loading dynamic actions: {:?}", e);
+        //     }
+        // }
 
         registry
     }
@@ -57,7 +57,7 @@ impl ActionRegistry {
         self.dynamic_actions.push(action);
     }
 
-    pub fn get_all_actions(&self) -> Vec<ActionItem> {
+    pub fn get_actions_filtered(&self, filter: &str) -> Vec<ActionItem> {
         let mut actions = Vec::new();
 
         // Create actions from builtin definitions
@@ -86,8 +86,8 @@ impl ActionRegistry {
             actions.push(action);
         }
 
-        // Add dynamic actions
-        for action_def in &self.dynamic_actions {
+        let dynamic_actions = self.db.get_actions_filtered(filter).unwrap_or_default();
+        for action_def in dynamic_actions {
             actions.push(action_def.create_action(self.db.clone()));
         }
 

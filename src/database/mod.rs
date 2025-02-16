@@ -53,7 +53,7 @@ impl Database {
         Ok(count)
     }
 
-    pub fn get_actions(&self) -> Result<Vec<Box<dyn ActionDefinition>>> {
+    pub fn get_actions_filtered(&self, filter: &str) -> Result<Vec<Box<dyn ActionDefinition>>> {
         let mut stmt = self.conn.prepare(
             "
             SELECT 
@@ -90,12 +90,13 @@ impl Database {
             LEFT JOIN desktop_items d ON (
                 a.action_type = 'desktop' AND d.id = a.id
             )
+            WHERE a.name LIKE '%' || ?1 || '%'
             ORDER BY rank_score DESC
             LIMIT 10
             ",
         )?;
 
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map([filter], |row| {
             let id: usize = row.get(0)?;
             let action_type: String = row.get(2)?;
             let name: String = row.get(1)?;

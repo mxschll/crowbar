@@ -30,33 +30,33 @@ impl ActionListView {
         let db = Arc::new(Database::new().unwrap());
         info!("Database initialization took {:?}", db_start.elapsed());
 
-        // Check if we need to scan for dynamic actions
-        if ActionScanner::needs_scan(db.connection()) {
-            info!("No dynamic actions found, starting background scan");
-            cx.spawn(|view, mut cx| async move {
-                let db = Arc::new(Database::new().unwrap());
-                ActionScanner::scan_system(&db);
-                let _ = view.update(&mut cx, |this, cx| {
-                    let db = Arc::new(Database::new().unwrap());
-                    let registry = ActionRegistry::new(db);
-                    this.actions = ActionList::new(registry.get_all_actions());
-                    cx.notify();
-                });
-            })
-            .detach();
-        }
+        // // Check if we need to scan for dynamic actions
+        // if ActionScanner::needs_scan(db.connection()) {
+        //     info!("No dynamic actions found, starting background scan");
+        //     cx.spawn(|view, mut cx| async move {
+        //         let db = Arc::new(Database::new().unwrap());
+        //         ActionScanner::scan_system(&db);
+        //         let _ = view.update(&mut cx, |this, cx| {
+        //             let db = Arc::new(Database::new().unwrap());
+        //             let registry = ActionRegistry::new(db);
+        //             this.actions = ActionList::new(registry.get_all_actions());
+        //             cx.notify();
+        //         });
+        //     })
+        //     .detach();
+        // }
 
         let registry = ActionRegistry::new(db.clone());
 
         info!("Creating default actions");
         let default_start = Instant::now();
-        let all_actions = registry.get_all_actions();
+        let all_actions = registry.get_actions_filtered("");
         info!(
             "Creating default actions took {:?}",
             default_start.elapsed()
         );
 
-        let actions = ActionList::new(all_actions);
+        let actions = ActionList::new(cx, db.clone());
 
         Self {
             actions,
@@ -91,7 +91,7 @@ impl ActionListView {
         }
     }
 
-    fn filtered_items(&self) -> Vec<&ActionItem> {
+    fn filtered_items(&self) -> Vec<ActionItem> {
         self.actions.fuzzy_search(&self.filter)
     }
 
@@ -106,10 +106,8 @@ impl ActionListView {
         self.args = args.split_whitespace().map(str::to_string).collect();
     }
 
-    pub fn get_selected_action(&self) -> Option<&ActionItem> {
-        self.filtered_items()
-            .get(self.selected_index)
-            .map(|item| &**item)
+    pub fn get_selected_action(&self) -> Option<ActionItem> {
+        self.filtered_items().get(self.selected_index).cloned()
     }
 
     pub fn run_selected_action(&self) -> bool {
@@ -165,7 +163,7 @@ impl gpui::Render for ActionListView {
                                     .id(index + range.start)
                                     .px_4()
                                     .py_2()
-                                    .child((*item).clone())
+                                    .child(item.clone())
                                     .when(is_selected, |x| x.bg(rgb(0x3D3628)))
                             })
                             .collect()
