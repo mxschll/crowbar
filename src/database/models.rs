@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use anyhow::Result;
 use rusqlite::Connection;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct Action {
@@ -26,9 +26,16 @@ pub struct DesktopItem {
 
 impl Action {
     pub fn insert(conn: &Connection, name: &str, action_type: &str) -> Result<i64> {
+        // Create a searchable name by removing special chars and converting to lowercase
+        let searchname = name
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .collect::<String>()
+            .to_lowercase();
+
         conn.execute(
-            "INSERT OR IGNORE INTO actions (name, action_type) VALUES (?1, ?2)",
-            (name, action_type),
+            "INSERT OR IGNORE INTO actions (name, searchname, action_type) VALUES (?1, ?2, ?3)",
+            (name, &searchname, action_type),
         )?;
 
         let id = conn.query_row(
@@ -65,4 +72,5 @@ impl DesktopItem {
 
         Ok(action_id)
     }
-} 
+}
+

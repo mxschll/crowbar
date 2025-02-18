@@ -1,9 +1,12 @@
 use anyhow;
 use gpui::{div, rgb, Element, ParentElement, Styled};
 use std::sync::Arc;
+use std::usize;
 
 use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
 use crate::database::Database;
+
+static RELEVANCE_BOOST: usize = 2;
 
 #[derive(Clone)]
 pub struct AppHandler {
@@ -19,12 +22,7 @@ impl ActionHandler for AppHandler {
         let program = parts.next().unwrap();
         let args: Vec<_> = parts.collect();
 
-        let mut command = std::process::Command::new(program);
-        command.args(args);
-        if !input.is_empty() {
-            command.arg(input);
-        }
-        command.spawn()?;
+        let mut command = std::process::Command::new(program).spawn()?;
         Ok(())
     }
 
@@ -64,6 +62,7 @@ impl ActionDefinition for AppHandler {
                     .into_any()
             },
             self.relevance,
+            RELEVANCE_BOOST,
             db,
         )
     }

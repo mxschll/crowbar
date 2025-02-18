@@ -1,10 +1,10 @@
 use anyhow;
-use url::Url;
-use gpui::{div, rgb, Styled, ParentElement, IntoElement, Element};
+use gpui::{div, rgb, Element, IntoElement, ParentElement, Styled};
 use std::sync::Arc;
+use url::Url;
 
-use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionItem, ActionId};
 use crate::actions::action_ids;
+use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
 use crate::database::Database;
 
 #[derive(Clone)]
@@ -25,7 +25,7 @@ impl ActionHandler for PerplexityHandler {
 
 impl ActionDefinition for PerplexityHandler {
     fn create_action(&self, db: Arc<Database>) -> ActionItem {
-        let execution_count = db.get_execution_count(self.get_id().as_str()).unwrap_or(0);
+        let (relevance, execution_count) = db.get_action_relevance(self.get_id().as_str()).unwrap();
         let name = self.get_name();
 
         ActionItem::new(
@@ -53,7 +53,8 @@ impl ActionDefinition for PerplexityHandler {
                     )
                     .into_any()
             },
-            0,
+            relevance,
+            1,
             db,
         )
     }
@@ -65,4 +66,4 @@ impl ActionDefinition for PerplexityHandler {
     fn get_name(&self) -> String {
         "Perplexity Search".to_string()
     }
-} 
+}

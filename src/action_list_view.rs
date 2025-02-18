@@ -1,23 +1,17 @@
 use gpui::{
     div, prelude::FluentBuilder, rgb, uniform_list, white, Context, InteractiveElement,
-    IntoElement, ParentElement, ScrollStrategy, SharedString, Styled, UniformListScrollHandle,
-    Window,
+    IntoElement, ParentElement, ScrollStrategy, Styled, UniformListScrollHandle, Window,
 };
 
 use crate::actions::action_item::ActionItem;
-use crate::actions::action_list::ActionList;
 use crate::actions::registry::ActionRegistry;
-use crate::actions::scanner::ActionScanner;
-use crate::database::Database;
-use log::info;
 use std::sync::Arc;
-use std::time::Instant;
 
 const ITEMS_TO_SHOW: usize = 30;
 
 pub struct ActionListView {
-    actions: ActionList,
-    filter: SharedString,
+    actions: ActionRegistry,
+    filter: Arc<str>,
     args: Vec<String>,
     selected_index: usize,
     list_scroll_handle: UniformListScrollHandle,
@@ -25,38 +19,7 @@ pub struct ActionListView {
 
 impl ActionListView {
     pub fn new(cx: &mut Context<Self>) -> ActionListView {
-        info!("Starting database initialization");
-        let db_start = Instant::now();
-        let db = Arc::new(Database::new().unwrap());
-        info!("Database initialization took {:?}", db_start.elapsed());
-
-        // // Check if we need to scan for dynamic actions
-        // if ActionScanner::needs_scan(db.connection()) {
-        //     info!("No dynamic actions found, starting background scan");
-        //     cx.spawn(|view, mut cx| async move {
-        //         let db = Arc::new(Database::new().unwrap());
-        //         ActionScanner::scan_system(&db);
-        //         let _ = view.update(&mut cx, |this, cx| {
-        //             let db = Arc::new(Database::new().unwrap());
-        //             let registry = ActionRegistry::new(db);
-        //             this.actions = ActionList::new(registry.get_all_actions());
-        //             cx.notify();
-        //         });
-        //     })
-        //     .detach();
-        // }
-
-        let registry = ActionRegistry::new(db.clone());
-
-        info!("Creating default actions");
-        let default_start = Instant::now();
-        let all_actions = registry.get_actions_filtered("");
-        info!(
-            "Creating default actions took {:?}",
-            default_start.elapsed()
-        );
-
-        let actions = ActionList::new(cx, db.clone());
+        let actions = ActionRegistry::new(cx);
 
         Self {
             actions,
@@ -92,11 +55,11 @@ impl ActionListView {
     }
 
     fn filtered_items(&self) -> Vec<ActionItem> {
-        self.actions.fuzzy_search(&self.filter)
+        self.actions.get_actions_filtered(&self.filter)
     }
 
     pub fn set_filter(&mut self, new_filter: &str) {
-        self.filter = new_filter.to_string().into();
+        self.filter = new_filter.into();
         self.selected_index = 0;
         self.list_scroll_handle
             .scroll_to_item(self.selected_index, ScrollStrategy::Top);
@@ -143,7 +106,7 @@ impl gpui::Render for ActionListView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let items = self.filtered_items();
 
-        if items.is_empty() && self.filter.is_empty() {
+        if items.len() < 1 && self.filter.is_empty() {
             loading_screen()
         } else {
             div().size_full().child(

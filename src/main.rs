@@ -49,8 +49,8 @@ actions!(
 struct Crowbar {
     config: Config,
     query_input: Entity<TextInput>,
-    argument_input: Entity<TextInput>,
-    show_argument_input: bool,
+    // argument_input: Entity<TextInput>,
+    // show_argument_input: bool,
     action_list: Entity<ActionListView>,
     focus_handle: FocusHandle,
 }
@@ -77,10 +77,10 @@ impl Crowbar {
     }
 
     fn handle_tab(&mut self, _: &Tab, wd: &mut Window, cx: &mut Context<Self>) {
-        if self.show_argument_input {
-            debug!("Tab pressed, switching focus to argument input");
-            cx.focus_view(&self.argument_input, wd);
-        }
+        // if self.show_argument_input {
+        //     debug!("Tab pressed, switching focus to argument input");
+        //     cx.focus_view(&self.argument_input, wd);
+        // }
     }
 
     fn handle_shift_tab(&mut self, _: &ShiftTab, wd: &mut Window, cx: &mut Context<Self>) {
@@ -98,9 +98,9 @@ impl Crowbar {
             self.query_input.update(cx, |input, _cx| {
                 input.reset();
             });
-            self.argument_input.update(cx, |input, _cx| {
-                input.reset();
-            });
+            // self.argument_input.update(cx, |input, _cx| {
+            //     input.reset();
+            // });
 
             cx.quit();
         }
@@ -138,12 +138,11 @@ impl Render for Crowbar {
                             .mt_auto()
                             .flex()
                             .flex_row()
-                            .child(div().child(self.query_input.clone()))
-                            .child(div().child(if self.show_argument_input {
-                                div().child(self.argument_input.clone())
-                            } else {
-                                div()
-                            })),
+                            .child(div().child(self.query_input.clone())), // .child(div().child(if self.show_argument_input {
+                                                                           //     div().child(self.argument_input.clone())
+                                                                           // } else {
+                                                                           //     div()
+                                                                           // })),
                     ),
             )
     }
@@ -220,7 +219,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     let action_list = cx.new(|cx| ActionListView::new(cx));
                     let weak_ref = action_list.downgrade();
-                    let weak_ref2 = weak_ref.clone();
+                    // let weak_ref2 = weak_ref.clone();
 
                     let crowbar = cx.new(|cx| {
                         let crowbar = Crowbar {
@@ -228,8 +227,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                             query_input: text_input.clone(),
                             action_list: action_list.clone(),
                             focus_handle: cx.focus_handle(),
-                            argument_input: text_input2.clone(),
-                            show_argument_input: false,
+                            // argument_input: text_input2.clone(),
+                            // show_argument_input: false,
                         };
 
                         crowbar
@@ -243,13 +242,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                     })
                     .detach();
 
-                    cx.subscribe(&text_input2, move |_view, event, cx| {
-                        let _ = weak_ref2.update(cx, move |this, cx| {
-                            this.set_args(&event.content);
-                            cx.notify();
-                        });
-                    })
-                    .detach();
+                    // cx.subscribe(&text_input2, move |_view, event, cx| {
+                    //     let _ = weak_ref2.update(cx, move |this, cx| {
+                    //         this.set_args(&event.content);
+                    //         cx.notify();
+                    //     });
+                    // })
+                    // .detach();
 
                     crowbar
                 },

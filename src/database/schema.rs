@@ -42,6 +42,7 @@ impl Schema {
             CREATE TABLE IF NOT EXISTS actions (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
+                searchname TEXT NOT NULL,
                 action_type TEXT NOT NULL,
                 UNIQUE(name, action_type)
             );

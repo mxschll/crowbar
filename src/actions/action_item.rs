@@ -1,7 +1,7 @@
 use crate::database::Database;
 use gpui::{AnyElement, IntoElement, RenderOnce};
-use std::fmt;
 use std::sync::Arc;
+use std::{fmt, usize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionId {
@@ -83,6 +83,7 @@ pub struct ActionItem {
     pub context_filter: Box<dyn ContextFilter>,
     pub render: Box<dyn RenderFn + Send + Sync>,
     pub relevance: usize,
+    pub relevance_boost: usize,
     pub db: Arc<Database>,
 }
 
@@ -102,7 +103,7 @@ impl PartialOrd for ActionItem {
 
 impl Ord for ActionItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.relevance.cmp(&self.relevance)
+        other.relevance().cmp(&self.relevance())
     }
 }
 
@@ -134,6 +135,7 @@ impl ActionItem {
         context_filter: F,
         render: R,
         relevance: usize,
+        relevance_boost: usize,
         db: Arc<Database>,
     ) -> Self
     where
@@ -150,8 +152,13 @@ impl ActionItem {
             context_filter: Box::new(context_filter),
             render: Box::new(render),
             relevance,
+            relevance_boost,
             db,
         }
+    }
+
+    pub fn relevance(&self) -> usize {
+        return self.relevance * self.relevance_boost;
     }
 
     const FUZZY_MATCH_THRESHOLD: f64 = 0.8;

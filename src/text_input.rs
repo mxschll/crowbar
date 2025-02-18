@@ -253,6 +253,15 @@ pub struct TextInputChange {
 impl EventEmitter<TextInputChange> for TextInput {}
 
 impl EntityInputHandler for TextInput {
+    fn character_index_for_point(
+        &mut self,
+        point: Point<Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        Some(self.index_for_mouse_position(point))
+    }
+
     fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,

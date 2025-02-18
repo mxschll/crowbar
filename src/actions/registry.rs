@@ -1,25 +1,41 @@
+use crate::action_list_view::ActionListView;
 use crate::actions::action_item::{ActionDefinition, ActionItem};
 use crate::actions::handlers::{
     duckduckgo_handler::DuckDuckGoHandler, google_handler::GoogleHandler,
     perplexity_handler::PerplexityHandler, url_handler::UrlHandler, yandex_handler::YandexHandler,
 };
 use crate::database::Database;
-use gpui::{div, rgb, Element, ParentElement, Styled};
+use gpui::{div, rgb, Context, Element, ParentElement, Styled};
 use log::info;
 use std::sync::Arc;
+
+use super::scanner::ActionScanner;
 
 pub struct ActionRegistry {
     db: Arc<Database>,
     builtin_actions: Vec<Box<dyn ActionDefinition>>,
-    dynamic_actions: Vec<Box<dyn ActionDefinition>>,
 }
 
 impl ActionRegistry {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(cx: &mut Context<ActionListView>) -> Self {
+        let db = Arc::new(Database::new().unwrap());
+
+        // Check if we need to scan for dynamic actions
+        if ActionScanner::needs_scan(db.connection()) {
+            info!("No dynamic actions found, starting background scan");
+            cx.spawn(|view, mut cx| async move {
+                let db = Arc::new(Database::new().unwrap());
+                ActionScanner::scan_system(&db);
+                let _ = view.update(&mut cx, |_this, cx| {
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+
         let mut registry = Self {
             db: db.clone(),
             builtin_actions: Vec::new(),
-            dynamic_actions: Vec::new(),
         };
 
         // Register built-in actions
@@ -29,23 +45,6 @@ impl ActionRegistry {
         registry.register_builtin(Box::new(PerplexityHandler));
         registry.register_builtin(Box::new(UrlHandler));
 
-        // Load dynamic actions from database using the Database instance's method
-        // info!("Loading dynamic actions...");
-        // match db.get_actions() {
-        //     Ok(dynamic_actions) => {
-        //         println!(
-        //             "Successfully loaded {} dynamic actions",
-        //             dynamic_actions.len()
-        //         );
-        //         for action in dynamic_actions {
-        //             registry.register_dynamic(action);
-        //         }
-        //     }
-        //     Err(e) => {
-        //         println!("Error loading dynamic actions: {:?}", e);
-        //     }
-        // }
-
         registry
     }
 
@@ -53,15 +52,23 @@ impl ActionRegistry {
         self.builtin_actions.push(action);
     }
 
-    pub fn register_dynamic(&mut self, action: Box<dyn ActionDefinition>) {
-        self.dynamic_actions.push(action);
-    }
-
     pub fn get_actions_filtered(&self, filter: &str) -> Vec<ActionItem> {
-        let mut actions = Vec::new();
+        let total_capacity = self.builtin_actions.len() + 10; // DB returns max 10
+        let mut actions = Vec::with_capacity(total_capacity);
+
+        // Only fetch dynamic actions if they might be relevant
+        if filter.is_empty() || filter.len() >= 2 {
+            if let Ok(dynamic_actions) = self.db.get_actions_filtered(filter) {
+                actions.extend(
+                    dynamic_actions
+                        .into_iter()
+                        .map(|action_def| action_def.create_action(self.db.clone())),
+                );
+            }
+        }
 
         // Create actions from builtin definitions
-        for action_def in &self.builtin_actions {
+        actions.extend(self.builtin_actions.iter().map(|action_def| {
             let id = action_def.get_id();
             // Get execution count for built-in action
             let execution_count = self.db.get_execution_count(id.as_str()).unwrap_or(0);
@@ -83,13 +90,11 @@ impl ActionRegistry {
                     .into_any()
             });
 
-            actions.push(action);
-        }
+            action
+        }));
 
-        let dynamic_actions = self.db.get_actions_filtered(filter).unwrap_or_default();
-        for action_def in dynamic_actions {
-            actions.push(action_def.create_action(self.db.clone()));
-        }
+        actions.retain(|item| item.should_display(filter));
+        actions.sort_unstable();
 
         actions
     }

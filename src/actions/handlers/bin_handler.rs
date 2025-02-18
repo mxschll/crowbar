@@ -17,7 +17,7 @@ pub struct BinHandler {
 
 impl ActionHandler for BinHandler {
     fn execute(&self, input: &str) -> anyhow::Result<()> {
-        std::process::Command::new(&self.path).arg(input).spawn()?;
+        std::process::Command::new(&self.path).spawn()?;
         Ok(())
     }
 
@@ -58,6 +58,7 @@ impl ActionDefinition for BinHandler {
                     .into_any()
             },
             self.relevance,
+            2,
             db,
         )
     }

@@ -1,9 +1,9 @@
 use anyhow;
-use gpui::{div, rgb, Element, IntoElement, ParentElement, Styled};
+use gpui::{div, rgb, Element, ParentElement, Styled};
 use std::sync::Arc;
 
-use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionItem, ActionId};
 use crate::actions::action_ids;
+use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
 use crate::database::Database;
 
 #[derive(Clone)]
@@ -24,7 +24,7 @@ impl ActionHandler for GoogleHandler {
 
 impl ActionDefinition for GoogleHandler {
     fn create_action(&self, db: Arc<Database>) -> ActionItem {
-        let execution_count = db.get_execution_count(self.get_id().as_str()).unwrap_or(0);
+        let (relevance, execution_count) = db.get_action_relevance(self.get_id().as_str()).unwrap();
         let name = self.get_name();
 
         ActionItem::new(
@@ -52,7 +52,8 @@ impl ActionDefinition for GoogleHandler {
                     )
                     .into_any()
             },
-            0,
+            relevance,
+            1,
             db,
         )
     }
@@ -64,4 +65,4 @@ impl ActionDefinition for GoogleHandler {
     fn get_name(&self) -> String {
         "Google Search".to_string()
     }
-} 
+}

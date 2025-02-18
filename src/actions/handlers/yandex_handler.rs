@@ -1,10 +1,10 @@
 use anyhow;
-use url::Url;
-use gpui::{div, rgb, Styled, ParentElement, IntoElement, Element};
+use gpui::{div, rgb, Element, IntoElement, ParentElement, Styled};
 use std::sync::Arc;
+use url::Url;
 
-use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionItem, ActionId};
 use crate::actions::action_ids;
+use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
 use crate::database::Database;
 
 #[derive(Clone)]
@@ -54,6 +54,7 @@ impl ActionDefinition for YandexHandler {
                     .into_any()
             },
             0,
+            1,
             db,
         )
     }
@@ -65,4 +66,5 @@ impl ActionDefinition for YandexHandler {
     fn get_name(&self) -> String {
         "Yandex Search".to_string()
     }
-} 
+}
+

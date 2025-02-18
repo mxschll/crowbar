@@ -9,11 +9,11 @@
 
 [![Build Release](https://github.com/mxschll/crowbar/actions/workflows/build.yml/badge.svg)](https://github.com/mxschll/crowbar/actions/workflows/build.yml)
 
-> **Alpha Status**: Crowbar is currently in alpha. While it's functional, you
+> **Prototype**: Crowbar is currently a prototype. While it's functional, you
 > may encounter bugs, and features might change in the future.
 
-Created out of love for dmenu's simplicity, but built for modern Wayland
-systems (especially Ubuntu) where dmenu can be buggy.
+Created out of love for dmenu's simplicity, but built for Wayland systems where
+dmenu can be buggy.
 
 ![](./screenshot.png)
 

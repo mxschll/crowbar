@@ -10,7 +10,7 @@ use crate::actions::{
     handlers::{app_handler::AppHandler, bin_handler::BinHandler},
 };
 
-pub use models::{Action, DesktopItem, ProgramItem};
+pub use models::{DesktopItem, ProgramItem};
 
 #[derive(Debug)]
 pub struct Database {
@@ -53,6 +53,41 @@ impl Database {
         Ok(count)
     }
 
+    pub fn get_action_relevance(&self, action_id: &str) -> Result<(usize, i32)> {
+        let (rank_score, count): (f64, i32) = self.conn.query_row(
+            "
+            WITH action_stats AS (
+                SELECT 
+                    -- Base frequency score (number of executions with time decay)
+                    COALESCE(
+                        SUM(
+                            1.0 / (1.0 + (
+                                (julianday('now') - julianday(execution_timestamp)) * 24.0 * 60.0
+                            ) / (24.0 * 60.0)
+                        )
+                    ), 0) as base_score,
+                    COUNT(*) as execution_count,
+                    -- Time of day relevance
+                    COALESCE((
+                        SELECT 0.5 * COUNT(*)
+                        FROM action_executions ae2
+                        WHERE ae2.action_id = ?1
+                        AND strftime('%H', ae2.execution_timestamp) = strftime('%H', 'now')
+                    ), 0) as time_bonus
+                FROM action_executions
+                WHERE action_id = ?1
+            )
+            SELECT 
+                (base_score * (1.0 + time_bonus)) as rank_score,
+                execution_count
+            FROM action_stats",
+            [action_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        Ok(((rank_score * 1000.0) as usize, count))
+    }
+
     pub fn get_actions_filtered(&self, filter: &str) -> Result<Vec<Box<dyn ActionDefinition>>> {
         let mut stmt = self.conn.prepare(
             "
@@ -90,7 +125,10 @@ impl Database {
             LEFT JOIN desktop_items d ON (
                 a.action_type = 'desktop' AND d.id = a.id
             )
-            WHERE a.name LIKE '%' || ?1 || '%'
+            WHERE (
+                a.searchname LIKE '%' || ?1 || '%' 
+                OR a.name LIKE '%' || ?1 || '%'
+            )
             ORDER BY rank_score DESC
             LIMIT 10
             ",
