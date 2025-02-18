@@ -34,7 +34,7 @@ impl ActionDefinition for YandexHandler {
             vec![],
             "Search Yandex".to_string(),
             self.clone(),
-            |_input: &str| true,
+            |input: &str| input.len() > 0,
             move || {
                 div()
                     .flex()
@@ -67,4 +67,3 @@ impl ActionDefinition for YandexHandler {
         "Yandex Search".to_string()
     }
 }
-

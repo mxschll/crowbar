@@ -38,7 +38,7 @@ impl ActionDefinition for BinHandler {
             vec![],
             "Runs Binary".to_string(),
             self.clone(),
-            |_input: &str| false,
+            |_input: &str| true,
             move || {
                 div()
                     .flex()

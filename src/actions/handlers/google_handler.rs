@@ -33,7 +33,7 @@ impl ActionDefinition for GoogleHandler {
             vec![],
             "Search Google".to_string(),
             self.clone(),
-            |_input: &str| true,
+            |input: &str| input.len() > 0,
             move || {
                 div()
                     .flex()

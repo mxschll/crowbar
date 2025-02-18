@@ -34,7 +34,7 @@ impl ActionDefinition for DuckDuckGoHandler {
             vec![],
             "Search DuckDuckGo".to_string(),
             self.clone(),
-            |_input: &str| true,
+            |input: &str| input.len() > 0,
             move || {
                 div()
                     .flex()
@@ -67,4 +67,3 @@ impl ActionDefinition for DuckDuckGoHandler {
         "DuckDuckGo Search".to_string()
     }
 }
-

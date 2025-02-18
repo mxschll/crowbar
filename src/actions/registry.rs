@@ -56,15 +56,12 @@ impl ActionRegistry {
         let total_capacity = self.builtin_actions.len() + 10; // DB returns max 10
         let mut actions = Vec::with_capacity(total_capacity);
 
-        // Only fetch dynamic actions if they might be relevant
-        if filter.is_empty() || filter.len() >= 2 {
-            if let Ok(dynamic_actions) = self.db.get_actions_filtered(filter) {
-                actions.extend(
-                    dynamic_actions
-                        .into_iter()
-                        .map(|action_def| action_def.create_action(self.db.clone())),
-                );
-            }
+        if let Ok(dynamic_actions) = self.db.get_actions_filtered(filter) {
+            actions.extend(
+                dynamic_actions
+                    .into_iter()
+                    .map(|action_def| action_def.create_action(self.db.clone())),
+            );
         }
 
         // Create actions from builtin definitions

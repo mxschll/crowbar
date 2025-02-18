@@ -161,63 +161,8 @@ impl ActionItem {
         return self.relevance * self.relevance_boost;
     }
 
-    const FUZZY_MATCH_THRESHOLD: f64 = 0.8;
-    const MAX_LENGTH_RATIO: f64 = 1.5;
-
     pub fn should_display(&self, input: &str) -> bool {
-        if input.is_empty() {
-            return true;
-        }
-
-        let input_lower = input.to_lowercase();
-        let name_lower = self.name.to_lowercase();
-
-        // Exact substring match gets priority
-        if name_lower.contains(&input_lower) {
-            return true;
-        }
-
-        // Check if input is disproportionately long compared to the name
-        let length_ratio = input_lower.len() as f64 / name_lower.len() as f64;
-        if length_ratio > Self::MAX_LENGTH_RATIO {
-            // Skip fuzzy matching if input is too long, but still check other criteria
-            let tag_match = self
-                .tags
-                .iter()
-                .any(|tag| tag.to_lowercase().contains(&input_lower));
-            let function_match = self.function.to_lowercase().contains(&input_lower);
-            return tag_match || function_match || self.context_filter.filter(input);
-        }
-
-        // For shorter inputs, try fuzzy matching on word boundaries
-        let words: Vec<&str> = name_lower.split_whitespace().collect();
-        let matches_word_start = words.iter().any(|word| {
-            if input_lower.len() <= word.len() {
-                let similarity = strsim::jaro_winkler(&input_lower, &word[..input_lower.len()]);
-                similarity >= Self::FUZZY_MATCH_THRESHOLD
-            } else {
-                false
-            }
-        });
-
-        if matches_word_start {
-            return true;
-        }
-
-        // If no word-start matches, try full fuzzy match
-        let name_similarity = strsim::jaro_winkler(&input_lower, &name_lower);
-        if name_similarity >= Self::FUZZY_MATCH_THRESHOLD {
-            return true;
-        }
-
-        // Fall back to other matching criteria
-        let tag_match = self
-            .tags
-            .iter()
-            .any(|tag| tag.to_lowercase().contains(&input_lower));
-        let function_match = self.function.to_lowercase().contains(&input_lower);
-
-        tag_match || function_match || self.context_filter.filter(input)
+        return self.context_filter.filter(input);
     }
 
     pub fn execute(&self, input: &str) -> anyhow::Result<()> {

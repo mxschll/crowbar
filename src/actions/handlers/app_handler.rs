@@ -42,7 +42,7 @@ impl ActionDefinition for AppHandler {
             vec![],
             "Runs Application".to_string(),
             self.clone(),
-            |_input: &str| false,
+            |_input: &str| true,
             move || {
                 div()
                     .flex()
