@@ -5,6 +5,7 @@ use gpui::{
 
 use crate::actions::action_item::ActionItem;
 use crate::actions::registry::ActionRegistry;
+use crate::config::Config;
 use std::sync::Arc;
 
 const ITEMS_TO_SHOW: usize = 30;
@@ -31,11 +32,11 @@ impl ActionListView {
     }
 
     pub fn navigate_up(&mut self, cx: &mut Context<Self>) {
-        if !self.filtered_items().is_empty() {
+        if !self.actions.get_actions_filtered(&self.filter, cx).is_empty() {
             self.selected_index = self
                 .selected_index
                 .checked_sub(1)
-                .unwrap_or(self.filtered_items().len().min(ITEMS_TO_SHOW) - 1);
+                .unwrap_or(self.actions.get_actions_filtered(&self.filter, cx).len().min(ITEMS_TO_SHOW) - 1);
 
             self.list_scroll_handle
                 .scroll_to_item(self.selected_index, ScrollStrategy::Top);
@@ -45,17 +46,13 @@ impl ActionListView {
     }
 
     pub fn navigate_down(&mut self, cx: &mut Context<Self>) {
-        if !self.filtered_items().is_empty() {
+        if !self.actions.get_actions_filtered(&self.filter, cx).is_empty() {
             self.selected_index =
-                (self.selected_index + 1) % self.filtered_items().len().min(ITEMS_TO_SHOW);
+                (self.selected_index + 1) % self.actions.get_actions_filtered(&self.filter, cx).len().min(ITEMS_TO_SHOW);
             self.list_scroll_handle
                 .scroll_to_item(self.selected_index, ScrollStrategy::Top);
             cx.notify();
         }
-    }
-
-    fn filtered_items(&self) -> Vec<ActionItem> {
-        self.actions.get_actions_filtered(&self.filter)
     }
 
     pub fn set_filter(&mut self, new_filter: &str) {
@@ -69,13 +66,13 @@ impl ActionListView {
         self.args = args.split_whitespace().map(str::to_string).collect();
     }
 
-    pub fn get_selected_action(&self) -> Option<ActionItem> {
-        self.filtered_items().get(self.selected_index).cloned()
+    pub fn get_selected_action(&self, cx: &mut Context<Self>) -> Option<ActionItem> {
+        self.actions.get_actions_filtered(&self.filter, cx).get(self.selected_index).cloned()
     }
 
-    pub fn run_selected_action(&self) -> bool {
+    pub fn run_selected_action(&self, cx: &mut Context<Self>) -> bool {
         let filter = &self.filter.to_string();
-        if let Some(action) = self.get_selected_action() {
+        if let Some(action) = self.get_selected_action(cx) {
             let _ = action.execute(filter);
             return true;
         }
@@ -103,8 +100,8 @@ fn loading_screen() -> gpui::Div {
 }
 
 impl gpui::Render for ActionListView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let items = self.filtered_items();
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let items = self.actions.get_actions_filtered(&self.filter, cx);
 
         if items.len() < 1 && self.filter.is_empty() {
             loading_screen()
@@ -114,22 +111,25 @@ impl gpui::Render for ActionListView {
                     cx.entity().clone(),
                     "action-list",
                     items.len(),
-                    |this, range, _window, _cx| {
-                        this.filtered_items()
+                    |this, range, _window, cx| {
+                        let items = this.actions.get_actions_filtered(&this.filter, cx)
                             .into_iter()
                             .skip(range.start)
                             .take(range.end - range.start)
-                            .enumerate()
-                            .map(|(index, item)| {
-                                let is_selected = index + range.start == this.selected_index;
-                                div()
-                                    .id(index + range.start)
-                                    .px_4()
-                                    .py_2()
-                                    .child(item.clone())
-                                    .when(is_selected, |x| x.bg(rgb(0x3D3628)))
-                            })
-                            .collect()
+                            .enumerate();
+                            
+                        let theme = cx.global::<Config>();
+                        
+                        items.map(|(index, item)| {
+                            let is_selected = index + range.start == this.selected_index;
+                            div()
+                                .id(index + range.start)
+                                .px_4()
+                                .py_2()
+                                .child(item.clone())
+                                .when(is_selected, |x| x.bg(theme.selected_background_color))
+                        })
+                        .collect()
                     },
                 )
                 .track_scroll(self.list_scroll_handle.clone())

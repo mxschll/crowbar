@@ -1,10 +1,12 @@
 use anyhow;
 use core::str;
-use gpui::{div, rgb, Element, ParentElement, Styled};
+use gpui::{div, rgb, Context, Element, ParentElement, Styled};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
+use crate::action_list_view::ActionListView;
+use crate::config::Config;
 use crate::database::Database;
 
 #[derive(Clone)]
@@ -27,7 +29,10 @@ impl ActionHandler for BinHandler {
 }
 
 impl ActionDefinition for BinHandler {
-    fn create_action(&self, db: Arc<Database>) -> ActionItem {
+    fn create_action(&self, db: Arc<Database>, cx: &mut Context<ActionListView>) -> ActionItem {
+        let config = cx.global::<Config>();
+        let text_secondary_color = config.text_secondary_color;
+
         let execution_count = db.get_execution_count(self.get_id().as_str()).unwrap_or(0);
         let name = self.get_name();
         let path = self.path.to_string_lossy().to_string();
@@ -48,12 +53,12 @@ impl ActionDefinition for BinHandler {
                         div()
                             .flex_grow()
                             .child(path.clone())
-                            .text_color(rgb(0xA89984)),
+                            .text_color(text_secondary_color),
                     )
                     .child(
                         div()
                             .child(format!("{}", execution_count))
-                            .text_color(rgb(0xA89984)),
+                            .text_color(text_secondary_color),
                     )
                     .into_any()
             },

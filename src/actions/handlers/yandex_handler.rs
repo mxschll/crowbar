@@ -1,10 +1,12 @@
 use anyhow;
-use gpui::{div, rgb, Element, IntoElement, ParentElement, Styled};
+use gpui::{div, rgb, Context, Element, IntoElement, ParentElement, Styled};
 use std::sync::Arc;
 use url::Url;
 
+use crate::action_list_view::ActionListView;
 use crate::actions::action_ids;
 use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
+use crate::config::Config;
 use crate::database::Database;
 
 #[derive(Clone)]
@@ -24,7 +26,10 @@ impl ActionHandler for YandexHandler {
 }
 
 impl ActionDefinition for YandexHandler {
-    fn create_action(&self, db: Arc<Database>) -> ActionItem {
+    fn create_action(&self, db: Arc<Database>, cx: &mut Context<ActionListView>) -> ActionItem {
+        let config = cx.global::<Config>();
+        let text_secondary_color = config.text_secondary_color;
+
         let execution_count = db.get_execution_count(self.get_id().as_str()).unwrap_or(0);
         let name = self.get_name();
 
@@ -44,12 +49,12 @@ impl ActionDefinition for YandexHandler {
                         div()
                             .flex_grow()
                             .child("Search Engine")
-                            .text_color(rgb(0xA89984)),
+                            .text_color(text_secondary_color),
                     )
                     .child(
                         div()
                             .child(format!("{}", execution_count))
-                            .text_color(rgb(0xA89984)),
+                            .text_color(text_secondary_color),
                     )
                     .into_any()
             },

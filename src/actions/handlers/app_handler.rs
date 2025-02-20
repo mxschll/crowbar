@@ -1,9 +1,11 @@
 use anyhow;
-use gpui::{div, rgb, Element, ParentElement, Styled};
+use gpui::{div, rgb, Context, Element, ParentElement, Styled};
 use std::sync::Arc;
 use std::usize;
 
+use crate::action_list_view::ActionListView;
 use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
+use crate::config::Config;
 use crate::database::Database;
 
 static RELEVANCE_BOOST: usize = 2;
@@ -17,12 +19,10 @@ pub struct AppHandler {
 }
 
 impl ActionHandler for AppHandler {
-    fn execute(&self, input: &str) -> anyhow::Result<()> {
+    fn execute(&self, _: &str) -> anyhow::Result<()> {
         let mut parts = self.command.split_whitespace();
         let program = parts.next().unwrap();
-        let args: Vec<_> = parts.collect();
-
-        let mut command = std::process::Command::new(program).spawn()?;
+        let _ = std::process::Command::new(program).spawn()?;
         Ok(())
     }
 
@@ -32,7 +32,9 @@ impl ActionHandler for AppHandler {
 }
 
 impl ActionDefinition for AppHandler {
-    fn create_action(&self, db: Arc<Database>) -> ActionItem {
+    fn create_action(&self, db: Arc<Database>, cx: &mut Context<ActionListView>) -> ActionItem {
+        let config = cx.global::<Config>();
+        let text_secondary_color = config.text_secondary_color;
         let execution_count = db.get_execution_count(self.get_id().as_str()).unwrap_or(0);
         let name = self.get_name();
 
@@ -52,12 +54,12 @@ impl ActionDefinition for AppHandler {
                         div()
                             .flex_grow()
                             .child("Application")
-                            .text_color(rgb(0xA89984)),
+                            .text_color(text_secondary_color),
                     )
                     .child(
                         div()
                             .child(format!("{}", execution_count))
-                            .text_color(rgb(0xA89984)),
+                            .text_color(text_secondary_color),
                     )
                     .into_any()
             },

@@ -52,7 +52,7 @@ impl ActionRegistry {
         self.builtin_actions.push(action);
     }
 
-    pub fn get_actions_filtered(&self, filter: &str) -> Vec<ActionItem> {
+    pub fn get_actions_filtered(&self, filter: &str, cx: &mut Context<ActionListView>) -> Vec<ActionItem> {
         let total_capacity = self.builtin_actions.len() + 10; // DB returns max 10
         let mut actions = Vec::with_capacity(total_capacity);
 
@@ -60,7 +60,7 @@ impl ActionRegistry {
             actions.extend(
                 dynamic_actions
                     .into_iter()
-                    .map(|action_def| action_def.create_action(self.db.clone())),
+                    .map(|action_def| action_def.create_action(self.db.clone(), cx)),
             );
         }
 
@@ -69,23 +69,7 @@ impl ActionRegistry {
             let id = action_def.get_id();
             // Get execution count for built-in action
             let execution_count = self.db.get_execution_count(id.as_str()).unwrap_or(0);
-            let mut action = action_def.create_action(self.db.clone());
-
-            // Update the render function to include execution count
-            let name = action.name.clone();
-            action.render = Box::new(move || {
-                div()
-                    .flex()
-                    .gap_4()
-                    .child(div().flex_none().child(name.clone()))
-                    .child(div().flex_grow())
-                    .child(
-                        div()
-                            .child(format!("{}", execution_count))
-                            .text_color(rgb(0xA89984)),
-                    )
-                    .into_any()
-            });
+            let mut action = action_def.create_action(self.db.clone(), cx);
 
             action
         }));

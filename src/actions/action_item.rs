@@ -1,5 +1,6 @@
 use crate::database::Database;
-use gpui::{AnyElement, IntoElement, RenderOnce};
+use crate::action_list_view::ActionListView;
+use gpui::{AnyElement, Context, IntoElement, RenderOnce};
 use std::sync::Arc;
 use std::{fmt, usize};
 
@@ -68,7 +69,7 @@ impl Clone for Box<dyn RenderFn + Send + Sync> {
 }
 
 pub trait ActionDefinition: Send + Sync {
-    fn create_action(&self, db: Arc<Database>) -> ActionItem;
+    fn create_action(&self, db: Arc<Database>, cx: &mut Context<ActionListView>) -> ActionItem;
     fn get_id(&self) -> ActionId;
     fn get_name(&self) -> String;
 }

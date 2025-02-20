@@ -2,16 +2,15 @@ mod action_list_view;
 mod actions;
 mod app_finder;
 mod common;
-mod config;
 mod database;
 mod desktop_entry_categories;
 mod executable_finder;
 mod text_input;
+mod config;
 
 use action_list_view::ActionListView;
-
-use config::Config;
 use text_input::TextInput;
+use config::Config;
 
 use std::error::Error;
 
@@ -47,16 +46,13 @@ actions!(
 );
 
 struct Crowbar {
-    config: Config,
     query_input: Entity<TextInput>,
-    // argument_input: Entity<TextInput>,
-    // show_argument_input: bool,
     action_list: Entity<ActionListView>,
     focus_handle: FocusHandle,
 }
 
 impl Focusable for Crowbar {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
@@ -76,12 +72,7 @@ impl Crowbar {
         cx.focus_view(&self.query_input, wd);
     }
 
-    fn handle_tab(&mut self, _: &Tab, wd: &mut Window, cx: &mut Context<Self>) {
-        // if self.show_argument_input {
-        //     debug!("Tab pressed, switching focus to argument input");
-        //     cx.focus_view(&self.argument_input, wd);
-        // }
-    }
+    fn handle_tab(&mut self, _: &Tab, wd: &mut Window, cx: &mut Context<Self>) {}
 
     fn handle_shift_tab(&mut self, _: &ShiftTab, wd: &mut Window, cx: &mut Context<Self>) {
         debug!("Shift Tab pressed, switching focus");
@@ -94,14 +85,10 @@ impl Crowbar {
     }
 
     fn handle_enter(&mut self, _: &Enter, _: &mut Window, cx: &mut Context<Self>) {
-        if self.action_list.read(cx).run_selected_action() {
+        if self.action_list.update(cx, |list, cx| list.run_selected_action(cx)) {
             self.query_input.update(cx, |input, _cx| {
                 input.reset();
             });
-            // self.argument_input.update(cx, |input, _cx| {
-            //     input.reset();
-            // });
-
             cx.quit();
         }
     }
@@ -109,9 +96,11 @@ impl Crowbar {
 
 impl Render for Crowbar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.global::<Config>();
+
         div()
             .id("crowbar")
-            .text_size(px(self.config.font_size))
+            .text_size(px(theme.font_size))
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::handle_enter))
             .on_action(cx.listener(Self::escape))
@@ -119,11 +108,11 @@ impl Render for Crowbar {
             .on_action(cx.listener(Self::navigate_down))
             .on_action(cx.listener(Self::handle_tab))
             .on_action(cx.listener(Self::handle_shift_tab))
-            .font_family(self.config.font_family.clone())
-            .bg(rgb(0x282828))
+            .font_family(theme.font_family.clone())
+            .bg(theme.background_color)
             .border_1()
-            .border_color(rgb(0xF0B62F))
-            .text_color(rgb(0xF0B62F))
+            .border_color(theme.border_color)
+            .text_color(theme.text_primary_color)
             .flex()
             .flex_col()
             .size_full()
@@ -132,17 +121,13 @@ impl Render for Crowbar {
                 div()
                     .w_full()
                     .border_t_1()
-                    .border_color(rgb(0x3B4B4F))
+                    .border_color(theme.border_color)
                     .child(
                         div()
                             .mt_auto()
                             .flex()
                             .flex_row()
-                            .child(div().child(self.query_input.clone())), // .child(div().child(if self.show_argument_input {
-                                                                           //     div().child(self.argument_input.clone())
-                                                                           // } else {
-                                                                           //     div()
-                                                                           // })),
+                            .child(div().child(self.query_input.clone())),
                     ),
             )
     }
@@ -151,12 +136,13 @@ impl Render for Crowbar {
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::builder().init();
 
-    let config = Config::load().unwrap();
-
     Application::new().run(|cx: &mut App| {
+        Config::init(cx);
+        let theme = cx.global::<Config>();
+
         let size = Size {
-            width: px(config.window_width),
-            height: px(config.window_heigth),
+            width: px(theme.window_width),
+            height: px(theme.window_height),
         };
 
         let bounds = Bounds::centered(None, size, cx);
@@ -205,30 +191,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                         is_selecting: false,
                     });
 
-                    let text_input2 = cx.new(|cx| TextInput {
-                        focus_handle: cx.focus_handle(),
-                        content: "".into(),
-                        placeholder: "Query (Press Tab)".into(),
-                        selected_range: 0..0,
-                        selection_reversed: false,
-                        marked_range: None,
-                        last_layout: None,
-                        last_bounds: None,
-                        is_selecting: false,
-                    });
-
                     let action_list = cx.new(|cx| ActionListView::new(cx));
                     let weak_ref = action_list.downgrade();
-                    // let weak_ref2 = weak_ref.clone();
 
                     let crowbar = cx.new(|cx| {
                         let crowbar = Crowbar {
-                            config,
                             query_input: text_input.clone(),
                             action_list: action_list.clone(),
                             focus_handle: cx.focus_handle(),
-                            // argument_input: text_input2.clone(),
-                            // show_argument_input: false,
                         };
 
                         crowbar
@@ -241,14 +211,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                         });
                     })
                     .detach();
-
-                    // cx.subscribe(&text_input2, move |_view, event, cx| {
-                    //     let _ = weak_ref2.update(cx, move |this, cx| {
-                    //         this.set_args(&event.content);
-                    //         cx.notify();
-                    //     });
-                    // })
-                    // .detach();
 
                     crowbar
                 },
