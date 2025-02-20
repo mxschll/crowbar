@@ -32,11 +32,11 @@ impl ActionListView {
     }
 
     pub fn navigate_up(&mut self, cx: &mut Context<Self>) {
-        if !self.actions.get_actions_filtered(&self.filter, cx).is_empty() {
+        if !self.actions.get_actions().is_empty() {
             self.selected_index = self
                 .selected_index
                 .checked_sub(1)
-                .unwrap_or(self.actions.get_actions_filtered(&self.filter, cx).len().min(ITEMS_TO_SHOW) - 1);
+                .unwrap_or(self.actions.get_actions().len().min(ITEMS_TO_SHOW) - 1);
 
             self.list_scroll_handle
                 .scroll_to_item(self.selected_index, ScrollStrategy::Top);
@@ -46,28 +46,24 @@ impl ActionListView {
     }
 
     pub fn navigate_down(&mut self, cx: &mut Context<Self>) {
-        if !self.actions.get_actions_filtered(&self.filter, cx).is_empty() {
+        if !self.actions.get_actions().is_empty() {
             self.selected_index =
-                (self.selected_index + 1) % self.actions.get_actions_filtered(&self.filter, cx).len().min(ITEMS_TO_SHOW);
+                (self.selected_index + 1) % self.actions.get_actions().len().min(ITEMS_TO_SHOW);
             self.list_scroll_handle
                 .scroll_to_item(self.selected_index, ScrollStrategy::Top);
             cx.notify();
         }
     }
 
-    pub fn set_filter(&mut self, new_filter: &str) {
-        self.filter = new_filter.into();
+    pub fn set_filter(&mut self, new_filter: &str, cx: &mut Context<Self>) {
+        self.actions.set_filter(new_filter, cx);
         self.selected_index = 0;
         self.list_scroll_handle
             .scroll_to_item(self.selected_index, ScrollStrategy::Top);
     }
 
-    pub fn set_args(&mut self, args: &str) {
-        self.args = args.split_whitespace().map(str::to_string).collect();
-    }
-
     pub fn get_selected_action(&self, cx: &mut Context<Self>) -> Option<ActionItem> {
-        self.actions.get_actions_filtered(&self.filter, cx).get(self.selected_index).cloned()
+        self.actions.get_actions().get(self.selected_index).cloned()
     }
 
     pub fn run_selected_action(&self, cx: &mut Context<Self>) -> bool {
@@ -101,9 +97,10 @@ fn loading_screen() -> gpui::Div {
 
 impl gpui::Render for ActionListView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let items = self.actions.get_actions_filtered(&self.filter, cx);
+        let items = self.actions.get_actions();
 
-        if items.len() < 1 && self.filter.is_empty() {
+        if self.filter.is_empty() && self.actions.needs_scan() {
+            self.actions.scan(cx);
             loading_screen()
         } else {
             div().size_full().child(
@@ -112,7 +109,7 @@ impl gpui::Render for ActionListView {
                     "action-list",
                     items.len(),
                     |this, range, _window, cx| {
-                        let items = this.actions.get_actions_filtered(&this.filter, cx)
+                        let items = this.actions.get_actions()
                             .into_iter()
                             .skip(range.start)
                             .take(range.end - range.start)

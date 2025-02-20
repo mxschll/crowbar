@@ -5,7 +5,7 @@ use crate::actions::handlers::{
     perplexity_handler::PerplexityHandler, url_handler::UrlHandler, yandex_handler::YandexHandler,
 };
 use crate::database::Database;
-use gpui::{div, rgb, Context, Element, ParentElement, Styled};
+use gpui::Context;
 use log::info;
 use std::sync::Arc;
 
@@ -14,14 +14,38 @@ use super::scanner::ActionScanner;
 pub struct ActionRegistry {
     db: Arc<Database>,
     builtin_actions: Vec<Box<dyn ActionDefinition>>,
+    filtered_actions: Vec<ActionItem>,
 }
 
 impl ActionRegistry {
     pub fn new(cx: &mut Context<ActionListView>) -> Self {
         let db = Arc::new(Database::new().unwrap());
 
+        let mut registry = Self {
+            db: db.clone(),
+            builtin_actions: Vec::new(),
+            filtered_actions: Vec::new(),
+        };
+
+        // Register built-in actions
+        registry.register_builtin(Box::new(GoogleHandler));
+        registry.register_builtin(Box::new(DuckDuckGoHandler));
+        registry.register_builtin(Box::new(YandexHandler));
+        registry.register_builtin(Box::new(PerplexityHandler));
+        registry.register_builtin(Box::new(UrlHandler));
+
+        registry.set_filter("", cx);
+
+        registry
+    }
+
+    pub fn needs_scan(&self) -> bool {
+        ActionScanner::needs_scan(self.db.connection())
+    }
+
+    pub fn scan(&self, cx: &mut Context<ActionListView>) {
         // Check if we need to scan for dynamic actions
-        if ActionScanner::needs_scan(db.connection()) {
+        if ActionScanner::needs_scan(self.db.connection()) {
             info!("No dynamic actions found, starting background scan");
             cx.spawn(|view, mut cx| async move {
                 let db = Arc::new(Database::new().unwrap());
@@ -32,27 +56,13 @@ impl ActionRegistry {
             })
             .detach();
         }
-
-        let mut registry = Self {
-            db: db.clone(),
-            builtin_actions: Vec::new(),
-        };
-
-        // Register built-in actions
-        registry.register_builtin(Box::new(GoogleHandler));
-        registry.register_builtin(Box::new(DuckDuckGoHandler));
-        registry.register_builtin(Box::new(YandexHandler));
-        registry.register_builtin(Box::new(PerplexityHandler));
-        registry.register_builtin(Box::new(UrlHandler));
-
-        registry
     }
 
     pub fn register_builtin(&mut self, action: Box<dyn ActionDefinition>) {
         self.builtin_actions.push(action);
     }
 
-    pub fn get_actions_filtered(&self, filter: &str, cx: &mut Context<ActionListView>) -> Vec<ActionItem> {
+    pub fn set_filter(&mut self, filter: &str, cx: &mut Context<ActionListView>) {
         let total_capacity = self.builtin_actions.len() + 10; // DB returns max 10
         let mut actions = Vec::with_capacity(total_capacity);
 
@@ -66,17 +76,16 @@ impl ActionRegistry {
 
         // Create actions from builtin definitions
         actions.extend(self.builtin_actions.iter().map(|action_def| {
-            let id = action_def.get_id();
-            // Get execution count for built-in action
-            let execution_count = self.db.get_execution_count(id.as_str()).unwrap_or(0);
-            let mut action = action_def.create_action(self.db.clone(), cx);
-
-            action
+             action_def.create_action(self.db.clone(), cx)
         }));
 
         actions.retain(|item| item.should_display(filter));
-        actions.sort_unstable();
+        actions.sort();
 
-        actions
+        self.filtered_actions = actions;
+    }
+
+    pub fn get_actions(&self) -> &Vec<ActionItem> {
+        &self.filtered_actions
     }
 }

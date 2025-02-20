@@ -15,7 +15,7 @@ use config::Config;
 use std::error::Error;
 
 use gpui::{
-    actions, div, prelude::*, px, rgb, App, AppContext, Application, Bounds, Context, Entity,
+    actions, div, prelude::*, px, App, AppContext, Application, Bounds, Context, Entity,
     FocusHandle, Focusable, KeyBinding, Size, Window, WindowBounds, WindowOptions,
 };
 
@@ -52,7 +52,7 @@ struct Crowbar {
 }
 
 impl Focusable for Crowbar {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
@@ -72,7 +72,7 @@ impl Crowbar {
         cx.focus_view(&self.query_input, wd);
     }
 
-    fn handle_tab(&mut self, _: &Tab, wd: &mut Window, cx: &mut Context<Self>) {}
+    fn handle_tab(&mut self, _: &Tab, _: &mut Window, _: &mut Context<Self>) {}
 
     fn handle_shift_tab(&mut self, _: &ShiftTab, wd: &mut Window, cx: &mut Context<Self>) {
         debug!("Shift Tab pressed, switching focus");
@@ -206,7 +206,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     cx.subscribe(&text_input, move |_view, event, cx| {
                         let _ = weak_ref.clone().update(cx, move |this, cx| {
-                            this.set_filter(&event.content);
+                            this.set_filter(&event.content, cx);
                             cx.notify();
                         });
                     })

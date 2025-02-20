@@ -172,10 +172,9 @@ impl<'de> Deserialize<'de> for Config {
 }
 
 impl Config {
-    pub fn init(cx: &mut App) -> Result<()> {
-        let config = Self::load()?;
+    pub fn init(cx: &mut App) {
+        let config = Self::load().unwrap_or_else(|_| Config::default());
         cx.set_global(config);
-        Ok(())
     }
 
     fn load() -> Result<Self> {
