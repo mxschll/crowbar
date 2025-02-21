@@ -4,6 +4,7 @@ use anyhow::Result;
 use gpui::{App, Global, Rgba};
 use serde::{Deserialize, Serialize};
 use toml;
+use log;
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
@@ -229,16 +230,32 @@ impl Config {
     fn load() -> Result<Self> {
         let config_path = Self::config_path()?;
         let config = if !config_path.exists() {
+            log::info!("No config file found at {:?}, creating default config", config_path);
             Config::default()
         } else {
-            match toml::from_str(&fs::read_to_string(&config_path)?) {
-                Ok(config) => config,
-                Err(_) => Config::default(),
+            log::info!("Loading config from {:?}", config_path);
+            let config_str = fs::read_to_string(&config_path)?;
+            match toml::from_str(&config_str) {
+                Ok(config) => {
+                    log::info!("Successfully loaded config file");
+                    config
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse config file: {}", e);
+                    // Backup invalid config file
+                    if let Err(e) = fs::rename(&config_path, config_path.with_extension("config.bak")) {
+                        log::error!("Failed to backup invalid config: {}", e);
+                    } else {
+                        log::info!("Backed up invalid config to {:?}", config_path.with_extension("config.bak"));
+                    }
+                    Config::default()
+                }
             }
         };
 
         fs::create_dir_all(config_path.parent().unwrap())?;
         fs::write(&config_path, toml::to_string_pretty(&config)?)?;
+        log::info!("Wrote config to {:?}", config_path);
 
         Ok(config)
     }
