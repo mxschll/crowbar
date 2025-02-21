@@ -84,29 +84,29 @@ automatically created with default values on first run.
 ```toml
 # Window dimensions (in pixels)
 window_width = 800.0
-window_heigth = 400.0
+window_height = 400.0
 
 # Font settings
 font_family = "Liberation Mono"
 font_size = 16.0
 
-# NOT IMPLEMENTED YET Colors (in hex format) [
-background = "#c5c8c6"            # Main background color
-foreground = "#1d1f21"            # Main text color
-selection_foreground = "#ffffff"  # Selected text color
-selection_background = "#373b41"  # Selection highlight color
-border_color = "#81a2be"          # Inactive window border
-active_border_color = "#373b41"   # Active window border
+# Colors (in hex format)
+text_primary_color = "#cdd6f4"            # Main text color
+text_secondary_color = "#a6adc8"          # Secondary text color (e.g., descriptions)
+text_selected_primary_color = "#cdd6f4"   # Selected item main text color
+text_selected_secondary_color = "#a6adc8" # Selected item secondary text color
+background_color = "#1e1f2f"              # Main background color
+border_color = "#bac2de"                  # Window border color
+selected_background_color = "#45475a"     # Selected item background color
 ```
 
-All colors must be specified in hex format with a leading `#` followed by
-exactly 6 characters (e.g., "#c5c8c6"). The colors support standard RGB hex
-values.
+All colors must be specified in hex format with a leading `#` followed by 6
+characters.
 
 The `font_family` setting accepts any font name installed on your system. Make
 sure the specified font is installed and supports monospace rendering for best
 results.
 
 If the configuration file becomes corrupted or contains invalid values, Crowbar
-will automatically reset it to default values.
+will use default values.
 
