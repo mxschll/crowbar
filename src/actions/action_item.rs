@@ -1,8 +1,8 @@
-use crate::database::Database;
 use crate::action_list_view::ActionListView;
+use crate::database::Database;
 use gpui::{AnyElement, Context, IntoElement, RenderOnce};
 use std::sync::Arc;
-use std::{fmt, usize};
+use std::usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionId {

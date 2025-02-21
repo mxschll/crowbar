@@ -109,24 +109,27 @@ impl gpui::Render for ActionListView {
                     "action-list",
                     items.len(),
                     |this, range, _window, cx| {
-                        let items = this.actions.get_actions()
+                        let items = this
+                            .actions
+                            .get_actions()
                             .into_iter()
                             .skip(range.start)
                             .take(range.end - range.start)
                             .enumerate();
-                            
+
                         let theme = cx.global::<Config>();
-                        
-                        items.map(|(index, item)| {
-                            let is_selected = index + range.start == this.selected_index;
-                            div()
-                                .id(index + range.start)
-                                .px_4()
-                                .py_2()
-                                .child(item.clone())
-                                .when(is_selected, |x| x.bg(theme.selected_background_color))
-                        })
-                        .collect()
+
+                        items
+                            .map(|(index, item)| {
+                                let is_selected = index + range.start == this.selected_index;
+                                div()
+                                    .id(index + range.start)
+                                    .px_4()
+                                    .py_2()
+                                    .child(item.clone())
+                                    .when(is_selected, |x| x.bg(theme.selected_background_color))
+                            })
+                            .collect()
                     },
                 )
                 .track_scroll(self.list_scroll_handle.clone())

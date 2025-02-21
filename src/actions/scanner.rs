@@ -42,4 +42,3 @@ impl ActionScanner {
         info!("System scan completed in {:?}", scan_start.elapsed());
     }
 }
-

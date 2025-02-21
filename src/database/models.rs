@@ -1,28 +1,14 @@
 use anyhow::Result;
 use rusqlite::Connection;
-use std::path::PathBuf;
 
 #[derive(Debug)]
-pub struct Action {
-    pub id: i64,
-    pub name: String,
-    pub action_type: String,
-}
+pub struct Action;
 
 #[derive(Debug)]
-pub struct ProgramItem {
-    pub id: i64,
-    pub name: String,
-    pub path: PathBuf,
-}
+pub struct ProgramItem;
 
 #[derive(Debug)]
-pub struct DesktopItem {
-    pub id: i64,
-    pub name: String,
-    pub exec: String,
-    pub accepts_args: bool,
-}
+pub struct DesktopItem;
 
 impl Action {
     pub fn insert(conn: &Connection, name: &str, action_type: &str) -> Result<i64> {
@@ -73,4 +59,3 @@ impl DesktopItem {
         Ok(action_id)
     }
 }
-

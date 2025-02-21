@@ -1,12 +1,12 @@
 use anyhow;
-use gpui::{div, rgb, Context, Element, ParentElement, Styled};
+use gpui::{div, Context, Element, ParentElement, Styled};
 use std::sync::Arc;
 
+use crate::action_list_view::ActionListView;
 use crate::actions::action_ids;
 use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
 use crate::config::Config;
 use crate::database::Database;
-use crate::action_list_view::ActionListView;
 
 #[derive(Clone)]
 pub struct GoogleHandler;
@@ -15,7 +15,7 @@ impl ActionHandler for GoogleHandler {
     fn execute(&self, input: &str) -> anyhow::Result<()> {
         let encoded_query = urlencoding::encode(input);
         let search_url = format!("https://www.google.com/search?q={}", encoded_query);
-        
+
         open::that(search_url)?;
         Ok(())
     }
@@ -72,3 +72,4 @@ impl ActionDefinition for GoogleHandler {
         "Google Search".to_string()
     }
 }
+

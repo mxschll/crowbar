@@ -1,12 +1,11 @@
 use std::ops::Range;
 
 use gpui::{
-    div, fill, hsla, point, px, relative, rgb, rgba, size, App, Bounds, ClipboardItem, Context,
-    CursorStyle, Element, ElementId, ElementInputHandler, Entity, EntityInputHandler, EventEmitter,
-    FocusHandle, Focusable, GlobalElementId, InteractiveElement, IntoElement, LayoutId,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, ParentElement, Pixels,
-    Point, Render, ShapedLine, SharedString, Style, Styled, TextRun, UTF16Selection,
-    UnderlineStyle, Window,
+    div, fill, hsla, point, px, rgba, size, App, Bounds, ClipboardItem, Context, CursorStyle,
+    Element, ElementId, ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle,
+    Focusable, GlobalElementId, InteractiveElement, IntoElement, LayoutId, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, ParentElement, Pixels, Point, Render,
+    ShapedLine, SharedString, Styled, TextRun, UTF16Selection, UnderlineStyle, Window,
 };
 
 use log::debug;

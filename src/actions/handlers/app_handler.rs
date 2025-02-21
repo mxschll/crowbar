@@ -1,5 +1,5 @@
 use anyhow;
-use gpui::{div, rgb, Context, Element, ParentElement, Styled};
+use gpui::{div, Context, Element, ParentElement, Styled};
 use std::sync::Arc;
 use std::usize;
 

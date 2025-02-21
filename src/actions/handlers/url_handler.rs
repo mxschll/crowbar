@@ -1,13 +1,13 @@
 use anyhow;
-use gpui::{div, rgb, Context, Element, IntoElement, ParentElement, Styled};
+use gpui::{div, Context, Element, ParentElement, Styled};
 use std::sync::Arc;
 use url::Url;
 
+use crate::action_list_view::ActionListView;
 use crate::actions::action_ids;
 use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
 use crate::config::Config;
 use crate::database::Database;
-use crate::action_list_view::ActionListView;
 
 #[derive(Clone)]
 pub struct UrlHandler;
