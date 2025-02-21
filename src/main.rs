@@ -12,11 +12,13 @@ use action_list_view::ActionListView;
 use config::Config;
 use text_input::TextInput;
 
+use chrono::Local;
 use std::error::Error;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::{
     actions, div, prelude::*, px, App, AppContext, Application, Bounds, Context, Entity,
-    FocusHandle, Focusable, KeyBinding, Size, Window, WindowBounds, WindowOptions,
+    FocusHandle, Focusable, KeyBinding, Size, Timer, Window, WindowBounds, WindowOptions,
 };
 
 use log::{debug, info};
@@ -49,6 +51,7 @@ struct Crowbar {
     query_input: Entity<TextInput>,
     action_list: Entity<ActionListView>,
     focus_handle: FocusHandle,
+    current_time: String,
 }
 
 impl Focusable for Crowbar {
@@ -95,11 +98,30 @@ impl Crowbar {
             cx.quit();
         }
     }
+
+    fn update_time(&mut self, cx: &mut Context<Self>) {
+        self.current_time = Local::now().format("%H:%M:%S").to_string();
+        cx.notify();
+    }
 }
 
 impl Render for Crowbar {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Config>();
+
+        cx.spawn_in(window, |view, mut cx| async move {
+            loop {
+                Timer::after(Duration::from_secs(1)).await;
+
+                let _ = cx.update(|_, cx| {
+                    view.update(cx, |view, cx| {
+                        view.update_time(cx);
+                    })
+                    .ok()
+                });
+            }
+        })
+        .detach();
 
         div()
             .id("crowbar")
@@ -119,6 +141,23 @@ impl Render for Crowbar {
             .flex()
             .flex_col()
             .size_full()
+            .child(
+                div()
+                    .w_full()
+                    .text_sm()
+                    .px_4()
+                    .py_1()
+                    .border_b_1()
+                    .border_color(theme.border_color)
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .children(vec![
+                        div().child("CROWBAR v0.0.1"),
+                        div().child(self.current_time.clone()),
+                    ]),
+            )
             .child(self.action_list.clone())
             .child(
                 div()
@@ -197,14 +236,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let action_list = cx.new(|cx| ActionListView::new(cx));
                     let weak_ref = action_list.downgrade();
 
-                    let crowbar = cx.new(|cx| {
-                        let crowbar = Crowbar {
-                            query_input: text_input.clone(),
-                            action_list: action_list.clone(),
-                            focus_handle: cx.focus_handle(),
-                        };
-
-                        crowbar
+                    let crowbar = cx.new(|cx| Crowbar {
+                        query_input: text_input.clone(),
+                        action_list: action_list.clone(),
+                        focus_handle: cx.focus_handle(),
+                        current_time: Local::now().format("%H:%M:%S").to_string(),
                     });
 
                     cx.subscribe(&text_input, move |_view, event, cx| {
