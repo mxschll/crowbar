@@ -1,6 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
-use anyhow::{Result};
+use anyhow::Result;
 use gpui::{App, Global, Rgba};
 use serde::{Deserialize, Serialize};
 use toml;
@@ -45,7 +45,6 @@ impl From<Color> for String {
     }
 }
 
-
 pub struct Config {
     pub text_primary_color: Rgba,
     pub text_secondary_color: Rgba,
@@ -60,16 +59,51 @@ pub struct Config {
     pub window_height: f32,
 }
 
-impl Default for Config{
+impl Default for Config {
     fn default() -> Self {
         Self {
-            text_primary_color: Rgba { r: 186.0/255.0, g: 194.0/255.0, b: 222.0/255.0, a: 1.0 },
-            text_secondary_color: Rgba { r: 186.0/255.0, g: 194.0/255.0, b: 222.0/255.0, a: 1.0 },
-            text_selected_primary_color: Rgba { r: 186.0/255.0, g: 194.0/255.0, b: 222.0/255.0, a: 1.0 },
-            text_selected_secondary_color: Rgba { r: 186.0/255.0, g: 194.0/255.0, b: 222.0/255.0, a: 1.0 },
-            background_color: Rgba { r: 30.0/255.0, g: 31.0/255.0, b: 47.0/255.0, a: 1.0 },
-            border_color: Rgba { r: 186.0/255.0, g: 194.0/255.0, b: 222.0/255.0, a: 1.0 },
-            selected_background_color: Rgba { r: 69.0/255.0, g: 71.0/255.0, b: 90.0/255.0, a: 1.0 },
+            text_primary_color: Rgba {
+                r: 205.0 / 255.0,
+                g: 214.0 / 255.0,
+                b: 244.0 / 255.0,
+                a: 1.0,
+            },
+            text_secondary_color: Rgba {
+                r: 166.0 / 255.0,
+                g: 173.0 / 255.0,
+                b: 200.0 / 255.0,
+                a: 1.0,
+            },
+            text_selected_primary_color: Rgba {
+                r: 205.0 / 255.0,
+                g: 214.0 / 255.0,
+                b: 244.0 / 255.0,
+                a: 1.0,
+            },
+            text_selected_secondary_color: Rgba {
+                r: 166.0 / 255.0,
+                g: 173.0 / 255.0,
+                b: 200.0 / 255.0,
+                a: 1.0,
+            },
+            background_color: Rgba {
+                r: 30.0 / 255.0,
+                g: 31.0 / 255.0,
+                b: 47.0 / 255.0,
+                a: 1.0,
+            },
+            border_color: Rgba {
+                r: 186.0 / 255.0,
+                g: 194.0 / 255.0,
+                b: 222.0 / 255.0,
+                a: 1.0,
+            },
+            selected_background_color: Rgba {
+                r: 69.0 / 255.0,
+                g: 71.0 / 255.0,
+                b: 90.0 / 255.0,
+                a: 1.0,
+            },
             font_family: String::from("Liberation Mono"),
             font_size: 16.0,
             window_width: 800.0,
@@ -96,34 +130,48 @@ struct ConfigToml {
 impl From<&Config> for ConfigToml {
     fn from(config: &Config) -> Self {
         Self {
-            text_primary_color: format!("#{:02x}{:02x}{:02x}", 
+            text_primary_color: format!(
+                "#{:02x}{:02x}{:02x}",
                 (config.text_primary_color.r * 255.0) as u8,
                 (config.text_primary_color.g * 255.0) as u8,
-                (config.text_primary_color.b * 255.0) as u8),
-            text_secondary_color: format!("#{:02x}{:02x}{:02x}",
+                (config.text_primary_color.b * 255.0) as u8
+            ),
+            text_secondary_color: format!(
+                "#{:02x}{:02x}{:02x}",
                 (config.text_secondary_color.r * 255.0) as u8,
                 (config.text_secondary_color.g * 255.0) as u8,
-                (config.text_secondary_color.b * 255.0) as u8),
-            text_selected_primary_color: format!("#{:02x}{:02x}{:02x}",
+                (config.text_secondary_color.b * 255.0) as u8
+            ),
+            text_selected_primary_color: format!(
+                "#{:02x}{:02x}{:02x}",
                 (config.text_selected_primary_color.r * 255.0) as u8,
                 (config.text_selected_primary_color.g * 255.0) as u8,
-                (config.text_selected_primary_color.b * 255.0) as u8),
-            text_selected_secondary_color: format!("#{:02x}{:02x}{:02x}",
+                (config.text_selected_primary_color.b * 255.0) as u8
+            ),
+            text_selected_secondary_color: format!(
+                "#{:02x}{:02x}{:02x}",
                 (config.text_selected_secondary_color.r * 255.0) as u8,
                 (config.text_selected_secondary_color.g * 255.0) as u8,
-                (config.text_selected_secondary_color.b * 255.0) as u8),
-            background_color: format!("#{:02x}{:02x}{:02x}",
+                (config.text_selected_secondary_color.b * 255.0) as u8
+            ),
+            background_color: format!(
+                "#{:02x}{:02x}{:02x}",
                 (config.background_color.r * 255.0) as u8,
                 (config.background_color.g * 255.0) as u8,
-                (config.background_color.b * 255.0) as u8),
-            border_color: format!("#{:02x}{:02x}{:02x}",
+                (config.background_color.b * 255.0) as u8
+            ),
+            border_color: format!(
+                "#{:02x}{:02x}{:02x}",
                 (config.border_color.r * 255.0) as u8,
                 (config.border_color.g * 255.0) as u8,
-                (config.border_color.b * 255.0) as u8),
-            selected_background_color: format!("#{:02x}{:02x}{:02x}",
+                (config.border_color.b * 255.0) as u8
+            ),
+            selected_background_color: format!(
+                "#{:02x}{:02x}{:02x}",
                 (config.selected_background_color.r * 255.0) as u8,
                 (config.selected_background_color.g * 255.0) as u8,
-                (config.selected_background_color.b * 255.0) as u8),
+                (config.selected_background_color.b * 255.0) as u8
+            ),
             font_family: config.font_family.clone(),
             font_size: config.font_size,
             window_width: config.window_width,
@@ -140,7 +188,8 @@ impl TryFrom<ConfigToml> for Config {
             text_primary_color: Color::from(toml.text_primary_color).to_rgba(),
             text_secondary_color: Color::from(toml.text_secondary_color).to_rgba(),
             text_selected_primary_color: Color::from(toml.text_selected_primary_color).to_rgba(),
-            text_selected_secondary_color: Color::from(toml.text_selected_secondary_color).to_rgba(),
+            text_selected_secondary_color: Color::from(toml.text_selected_secondary_color)
+                .to_rgba(),
             background_color: Color::from(toml.background_color).to_rgba(),
             border_color: Color::from(toml.border_color).to_rgba(),
             selected_background_color: Color::from(toml.selected_background_color).to_rgba(),
@@ -155,7 +204,7 @@ impl TryFrom<ConfigToml> for Config {
 impl Serialize for Config {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer 
+        S: serde::Serializer,
     {
         ConfigToml::from(self).serialize(serializer)
     }
@@ -164,7 +213,7 @@ impl Serialize for Config {
 impl<'de> Deserialize<'de> for Config {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>
+        D: serde::Deserializer<'de>,
     {
         let toml = ConfigToml::deserialize(deserializer)?;
         toml.try_into().map_err(serde::de::Error::custom)
@@ -187,10 +236,10 @@ impl Config {
                 Err(_) => Config::default(),
             }
         };
-        
+
         fs::create_dir_all(config_path.parent().unwrap())?;
         fs::write(&config_path, toml::to_string_pretty(&config)?)?;
-        
+
         Ok(config)
     }
 

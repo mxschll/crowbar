@@ -13,7 +13,8 @@ use log::debug;
 use unicode_segmentation::*;
 
 use crate::{
-    Backspace, Copy, Cut, Delete, End, Home, Left, Paste, Right, SelectAll, SelectLeft, SelectRight,
+    config::Config, Backspace, Copy, Cut, Delete, End, Home, Left, Paste, Right, SelectAll,
+    SelectLeft, SelectRight,
 };
 
 pub struct TextInput {
@@ -460,7 +461,7 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), hsla(1., 1., 1., 0.2))
+            (input.placeholder.clone(), hsla(1., 1., 1., 0.3))
         } else {
             (content.clone(), style.color)
         };
@@ -515,7 +516,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    gpui::blue(),
+                    gpui::white(),
                 )),
             )
         } else {
@@ -580,6 +581,8 @@ impl Element for TextElement {
 
 impl Render for TextInput {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let config = cx.global::<Config>();
+
         div()
             .flex()
             .key_context("textinput")
@@ -607,7 +610,7 @@ impl Render for TextInput {
                     .h(px(30. + 8. * 2.))
                     .px_4()
                     .py_2()
-                    .text_color(rgb(0xffffff))
+                    .text_color(config.text_primary_color)
                     .child(TextElement {
                         input: cx.entity().clone(),
                     }),
