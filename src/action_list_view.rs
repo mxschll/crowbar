@@ -57,6 +57,7 @@ impl ActionListView {
 
     pub fn set_filter(&mut self, new_filter: &str, cx: &mut Context<Self>) {
         self.actions.set_filter(new_filter, cx);
+        self.filter = new_filter.into();
         self.selected_index = 0;
         self.list_scroll_handle
             .scroll_to_item(self.selected_index, ScrollStrategy::Top);
