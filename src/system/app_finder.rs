@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 use crate::common::expand_tilde;
-use crate::desktop_entry_categories::Category;
+use super::desktop_entry_categories::Category;
 
 const DESKTOP_ENTRIES_UNIX_PATHS: &[&'static str] = &[
     "~/.local/share/applications",         // User-specific applications

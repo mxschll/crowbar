@@ -76,4 +76,8 @@ impl ActionDefinition for AppHandler {
     fn get_name(&self) -> String {
         self.name.clone()
     }
+
+    fn get_relevance(&self) -> usize {
+        self.relevance
+    }
 }

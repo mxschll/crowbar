@@ -71,5 +71,9 @@ impl ActionDefinition for GoogleHandler {
     fn get_name(&self) -> String {
         "Google Search".to_string()
     }
+
+    fn is_fallback(&self) -> bool {
+        true
+    }
 }
 

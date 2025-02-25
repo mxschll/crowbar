@@ -64,25 +64,49 @@ impl ActionRegistry {
 
     pub fn set_filter(&mut self, filter: &str, cx: &mut Context<ActionListView>) {
         let total_capacity = self.builtin_actions.len() + 10; // DB returns max 10
-        let mut actions = Vec::with_capacity(total_capacity);
+        let mut normal_actions = Vec::with_capacity(total_capacity);
+        let mut fallback_actions = Vec::with_capacity(self.builtin_actions.len());
 
+        // Get dynamic actions from DB - these are always normal priority
         if let Ok(dynamic_actions) = self.db.get_actions_filtered(filter) {
-            actions.extend(
+            normal_actions.extend(
                 dynamic_actions
                     .into_iter()
                     .map(|action_def| action_def.create_action(self.db.clone(), cx)),
             );
         }
 
-        // Create actions from builtin definitions
-        actions.extend(self.builtin_actions.iter().map(|action_def| {
-             action_def.create_action(self.db.clone(), cx)
-        }));
+        // Process built-in actions based on priority
+        for action_def in self.builtin_actions.iter() {
+            let action_item = action_def.create_action(self.db.clone(), cx);
+            
+            // Skip actions that wouldn't display anyway
+            if !action_item.should_display(filter) {
+                continue;
+            }
+            
+            if action_def.is_fallback() {
+                fallback_actions.push(action_item);
+            } else {
+                normal_actions.push(action_item);
+            }
+        }
 
-        actions.retain(|item| item.should_display(filter));
-        actions.sort();
-
-        self.filtered_actions = actions;
+        // Sort both groups by their internal relevance
+        normal_actions.sort();
+        fallback_actions.sort();
+        
+        // Reserve space for the combined list
+        let mut combined_actions = Vec::with_capacity(normal_actions.len() + fallback_actions.len());
+        
+        // Add all normal actions first
+        combined_actions.extend(normal_actions);
+        
+        // Then add all fallback actions
+        // This ensures fallbacks always appear after normal actions regardless of their relevance score
+        combined_actions.extend(fallback_actions);
+        
+        self.filtered_actions = combined_actions;
     }
 
     pub fn get_actions(&self) -> &Vec<ActionItem> {

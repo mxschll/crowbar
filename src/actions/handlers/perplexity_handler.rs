@@ -70,4 +70,8 @@ impl ActionDefinition for PerplexityHandler {
     fn get_name(&self) -> String {
         "Perplexity Search".to_string()
     }
+
+    fn is_fallback(&self) -> bool {
+        true
+    }
 }

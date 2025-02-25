@@ -1,6 +1,5 @@
-use crate::app_finder::scan_desktopentries;
+use crate::system::{scan_desktopentries, scan_path_executables};
 use crate::database::Database;
-use crate::executable_finder::scan_path_executables;
 use log::info;
 use rusqlite::Connection;
 

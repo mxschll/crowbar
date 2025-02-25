@@ -30,7 +30,7 @@ impl ActionDefinition for DuckDuckGoHandler {
         let config = cx.global::<Config>();
         let text_secondary_color = config.text_secondary_color;
 
-        let execution_count = db.get_execution_count(self.get_id().as_str()).unwrap_or(0);
+        let (relevance, execution_count) = db.get_action_relevance(self.get_id().as_str()).unwrap_or((1, 0));
         let name = self.get_name();
 
         ActionItem::new(
@@ -58,7 +58,7 @@ impl ActionDefinition for DuckDuckGoHandler {
                     )
                     .into_any()
             },
-            1,
+            relevance,
             1,
             db,
         )
@@ -70,5 +70,9 @@ impl ActionDefinition for DuckDuckGoHandler {
 
     fn get_name(&self) -> String {
         "DuckDuckGo Search".to_string()
+    }
+
+    fn is_fallback(&self) -> bool {
+        true
     }
 }

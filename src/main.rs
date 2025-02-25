@@ -1,11 +1,9 @@
 mod action_list_view;
 mod actions;
-mod app_finder;
 mod common;
 mod config;
 mod database;
-mod desktop_entry_categories;
-mod executable_finder;
+mod system;
 mod text_input;
 
 use action_list_view::ActionListView;

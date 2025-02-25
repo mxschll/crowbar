@@ -72,6 +72,16 @@ pub trait ActionDefinition: Send + Sync {
     fn create_action(&self, db: Arc<Database>, cx: &mut Context<ActionListView>) -> ActionItem;
     fn get_id(&self) -> ActionId;
     fn get_name(&self) -> String;
+    
+    // Default implementation returns false - normal priority action
+    fn is_fallback(&self) -> bool {
+        false
+    }
+    
+    // Get the relevance score for this action
+    fn get_relevance(&self) -> usize {
+        0 // Default relevance score
+    }
 }
 
 #[derive(Clone, IntoElement)]
