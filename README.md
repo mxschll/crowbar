@@ -106,6 +106,10 @@ selected_background_color = "#45475a"     # Selected item background color
 type = "text"
 content = "Crowbar"
 
+[[status_bar_left]]
+type = "text"
+content = "v1.0"
+
 [[status_bar_center]]
 type = "datetime"
 format = "%I:%M:%S %p"
@@ -113,10 +117,6 @@ format = "%I:%M:%S %p"
 [[status_bar_right]]
 type = "datetime"
 format = "%Y-%m-%d"
-
-[[status_bar_right]]
-type = "text"
-content = "v1.0"
 ```
 
 All colors must be specified in hex format with a leading `#` followed by 6
