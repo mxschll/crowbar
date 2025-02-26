@@ -12,14 +12,18 @@
 > **Prototype**: Crowbar is currently a prototype. While it's functional, you
 > may encounter bugs, and features might change in the future.
 
-Created out of love for dmenu's simplicity, but built for Wayland systems where
-dmenu can be buggy.
+Tested on:
+
+- Ubuntu 24.04 with (Wayland, GNOME)
 
 Launch applications:
 ![Screenshot](./screenshot0.png)
 
 Query search engines:
 ![Screenshot](./screenshot1.png)
+
+Customize your launcher:
+![Screenshot](./screenshot2.png)
 
 ## Features
 
