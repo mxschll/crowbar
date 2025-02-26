@@ -15,7 +15,7 @@
 Created out of love for dmenu's simplicity, but built for Wayland systems where
 dmenu can be buggy.
 
-![](./screenshot.png)
+![Screenshot](./screenshot.png)
 
 ## Features
 

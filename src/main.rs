@@ -13,7 +13,7 @@ use text_input::TextInput;
 use chrono::Local;
 use std::collections::HashMap;
 use std::error::Error;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use gpui::{
     actions, div, prelude::*, px, App, AppContext, Application, Bounds, Context, Entity,

@@ -13,7 +13,6 @@ const ITEMS_TO_SHOW: usize = 30;
 pub struct ActionListView {
     actions: ActionRegistry,
     filter: Arc<str>,
-    args: Vec<String>,
     selected_index: usize,
     list_scroll_handle: UniformListScrollHandle,
 }
@@ -25,7 +24,6 @@ impl ActionListView {
         Self {
             actions,
             filter: Default::default(),
-            args: Default::default(),
             selected_index: 0,
             list_scroll_handle: UniformListScrollHandle::new(),
         }
@@ -63,7 +61,7 @@ impl ActionListView {
             .scroll_to_item(self.selected_index, ScrollStrategy::Top);
     }
 
-    pub fn get_selected_action(&self, cx: &mut Context<Self>) -> Option<ActionItem> {
+    pub fn get_selected_action(&self, _cx: &mut Context<Self>) -> Option<ActionItem> {
         self.actions.get_actions().get(self.selected_index).cloned()
     }
 
