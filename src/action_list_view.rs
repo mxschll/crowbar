@@ -1,5 +1,5 @@
 use gpui::{
-    div, prelude::FluentBuilder, rgb, uniform_list, white, Context, InteractiveElement,
+    div, prelude::FluentBuilder, uniform_list, white, Context, InteractiveElement,
     IntoElement, ParentElement, ScrollStrategy, Styled, UniformListScrollHandle, Window,
 };
 

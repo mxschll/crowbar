@@ -7,10 +7,11 @@ mod system;
 mod text_input;
 
 use action_list_view::ActionListView;
-use config::Config;
+use config::{Config, StatusItem};
 use text_input::TextInput;
 
 use chrono::Local;
+use std::collections::HashMap;
 use std::error::Error;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -50,6 +51,7 @@ struct Crowbar {
     action_list: Entity<ActionListView>,
     focus_handle: FocusHandle,
     current_time: String,
+    status_formats: HashMap<String, String>,
 }
 
 impl Focusable for Crowbar {
@@ -99,13 +101,41 @@ impl Crowbar {
 
     fn update_time(&mut self, cx: &mut Context<Self>) {
         self.current_time = Local::now().format("%H:%M:%S").to_string();
+        
+        let theme = cx.global::<Config>();
+        for item in theme.status_bar_left.iter()
+            .chain(theme.status_bar_center.iter())
+            .chain(theme.status_bar_right.iter())
+        {
+            if let StatusItem::DateTime { format } = item {
+                let formatted = Local::now().format(format).to_string();
+                self.status_formats.insert(format.clone(), formatted);
+            }
+        }
+        
         cx.notify();
+    }
+
+    fn render_status_items(&self, items: &[StatusItem]) -> Vec<impl IntoElement> {
+        items.iter().map(|item| {
+            match item {
+                StatusItem::Text { content } => {
+                    div().child(content.clone())
+                }
+                StatusItem::DateTime { format } => {
+                    let formatted = self.status_formats.get(format).cloned().unwrap_or_else(|| {
+                        Local::now().format(format).to_string()
+                    });
+                    div().child(formatted)
+                }
+            }
+        }).collect()
     }
 }
 
 impl Render for Crowbar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.global::<Config>();
+        let config = cx.global::<Config>();
 
         cx.spawn_in(window, |view, mut cx| async move {
             loop {
@@ -123,7 +153,7 @@ impl Render for Crowbar {
 
         div()
             .id("crowbar")
-            .text_size(px(theme.font_size))
+            .text_size(px(config.font_size))
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::handle_enter))
             .on_action(cx.listener(Self::escape))
@@ -131,14 +161,15 @@ impl Render for Crowbar {
             .on_action(cx.listener(Self::navigate_down))
             .on_action(cx.listener(Self::handle_tab))
             .on_action(cx.listener(Self::handle_shift_tab))
-            .font_family(theme.font_family.clone())
-            .bg(theme.background_color)
+            .font_family(config.font_family.clone())
+            .bg(config.background_color)
             .border_1()
-            .border_color(theme.border_color)
-            .text_color(theme.text_primary_color)
+            .border_color(config.border_color)
+            .text_color(config.text_primary_color)
             .flex()
             .flex_col()
             .size_full()
+            // Header
             .child(
                 div()
                     .w_full()
@@ -146,14 +177,34 @@ impl Render for Crowbar {
                     .px_4()
                     .py_1()
                     .border_b_1()
-                    .border_color(theme.border_color)
+                    .border_color(config.border_color)
                     .flex()
                     .flex_row()
                     .items_center()
                     .justify_between()
                     .children(vec![
-                        div().child("CROWBAR v0.0.1"),
-                        div().child(self.current_time.clone()),
+                        div()
+                            .flex()
+                            .flex_row()
+                            .gap_2()
+                            .items_center()
+                            .children(self.render_status_items(&config.status_bar_left)),
+                        
+                        div()
+                            .flex()
+                            .flex_row()
+                            .gap_2()
+                            .items_center()
+                            .justify_center()
+                            .children(self.render_status_items(&config.status_bar_center)),
+                        
+                        div()
+                            .flex()
+                            .flex_row()
+                            .gap_2()
+                            .items_center()
+                            .justify_end()
+                            .children(self.render_status_items(&config.status_bar_right)),
                     ]),
             )
             .child(self.action_list.clone())
@@ -161,7 +212,7 @@ impl Render for Crowbar {
                 div()
                     .w_full()
                     .border_t_1()
-                    .border_color(theme.border_color)
+                    .border_color(config.border_color)
                     .child(
                         div()
                             .mt_auto()
@@ -239,6 +290,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         action_list: action_list.clone(),
                         focus_handle: cx.focus_handle(),
                         current_time: Local::now().format("%H:%M:%S").to_string(),
+                        status_formats: HashMap::new(),
                     });
 
                     cx.subscribe(&text_input, move |_view, event, cx| {

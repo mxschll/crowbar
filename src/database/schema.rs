@@ -67,7 +67,7 @@ impl Schema {
                 execution_timestamp TEXT NOT NULL,
                 FOREIGN KEY(action_id) REFERENCES actions(id)
             );
-            ",
+           ",
         )?;
 
         Ok(())
