@@ -15,7 +15,11 @@
 Created out of love for dmenu's simplicity, but built for Wayland systems where
 dmenu can be buggy.
 
-![Screenshot](./screenshot.png)
+Launch applications:
+![Screenshot](./screenshot0.png)
+
+Query search engines:
+![Screenshot](./screenshot1.png)
 
 ## Features
 
