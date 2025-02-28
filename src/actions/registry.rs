@@ -1,6 +1,8 @@
 use crate::action_list_view::ActionListView;
-use crate::actions::action_item::{ActionDefinition, ActionItem};
+use crate::actions::action_handler::{ActionDefinition, ActionItem};
 use crate::actions::handlers::{
+    browser_history_handler::BrowserHistoryFactory,
+    browser_history_handler::BrowserHistoryHandler,
     duckduckgo_handler::DuckDuckGoHandler, google_handler::GoogleHandler,
     perplexity_handler::PerplexityHandler, url_handler::UrlHandler, yandex_handler::YandexHandler,
 };
@@ -33,6 +35,7 @@ impl ActionRegistry {
         registry.register_builtin(Box::new(YandexHandler));
         registry.register_builtin(Box::new(PerplexityHandler));
         registry.register_builtin(Box::new(UrlHandler));
+        registry.register_builtin(Box::new(BrowserHistoryHandler::new()));
 
         registry.set_filter("", cx);
 
@@ -63,7 +66,7 @@ impl ActionRegistry {
     }
 
     pub fn set_filter(&mut self, filter: &str, cx: &mut Context<ActionListView>) {
-        let total_capacity = self.builtin_actions.len() + 10; // DB returns max 10
+        let total_capacity = self.builtin_actions.len() + 30; // DB returns max 10 + history results
         let mut normal_actions = Vec::with_capacity(total_capacity);
         let mut fallback_actions = Vec::with_capacity(self.builtin_actions.len());
 
@@ -74,6 +77,12 @@ impl ActionRegistry {
                     .into_iter()
                     .map(|action_def| action_def.create_action(self.db.clone(), cx)),
             );
+        }
+        
+        // Add browser history actions for the current filter
+        if !filter.is_empty() {
+            let history_actions = BrowserHistoryFactory::create_actions_for_query(filter, self.db.clone(), cx);
+            normal_actions.extend(history_actions);
         }
 
         // Process built-in actions based on priority

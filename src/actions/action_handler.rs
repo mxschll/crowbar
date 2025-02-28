@@ -4,6 +4,11 @@ use gpui::{AnyElement, Context, IntoElement, RenderOnce};
 use std::sync::Arc;
 use std::usize;
 
+pub trait HandlerFactory {
+    fn new(db: Arc<Database>, cx: &mut Context<ActionListView>) -> Box<dyn ActionHandler>;
+    fn create_handlers_for_query(query: &str, db: Arc<Database>, cx: &mut Context<ActionListView>) -> Vec<ActionItem>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionId {
     /// Built-in actions with string identifiers

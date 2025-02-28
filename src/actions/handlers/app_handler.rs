@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::usize;
 
 use crate::action_list_view::ActionListView;
-use crate::actions::action_item::{ActionDefinition, ActionHandler, ActionId, ActionItem};
+use crate::actions::action_handler::{ActionDefinition, ActionHandler, ActionId, ActionItem};
 use crate::config::Config;
 use crate::database::Database;
 

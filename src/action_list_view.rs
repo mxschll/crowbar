@@ -3,7 +3,7 @@ use gpui::{
     IntoElement, ParentElement, ScrollStrategy, Styled, UniformListScrollHandle, Window,
 };
 
-use crate::actions::action_item::ActionItem;
+use crate::actions::action_handler::ActionItem;
 use crate::actions::registry::ActionRegistry;
 use crate::config::Config;
 use std::sync::Arc;

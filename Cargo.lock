@@ -1115,6 +1115,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "gpui",
+ "lazy_static",
  "log",
  "open",
  "rusqlite",

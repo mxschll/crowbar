@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i32 = 1;
+pub const CURRENT_VERSION: i32 = 2;
 
 pub struct Schema;
 
@@ -66,6 +66,11 @@ impl Schema {
                 action_id TEXT NOT NULL,
                 execution_timestamp TEXT NOT NULL,
                 FOREIGN KEY(action_id) REFERENCES actions(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS handlers (
+                id TEXT PRIMARY KEY,
+                active BOOLEAN NOT NULL DEFAULT 1,
             );
            ",
         )?;

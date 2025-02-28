@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use std::{env, fs, path::PathBuf};
 
 use crate::actions::{
-    action_item::{ActionDefinition, ActionId},
+    action_handler::{ActionDefinition, ActionId},
     handlers::{app_handler::AppHandler, bin_handler::BinHandler},
 };
 
