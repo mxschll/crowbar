@@ -3,14 +3,34 @@ use gpui::{div, Context, Element, ParentElement, Styled};
 use std::sync::Arc;
 
 use crate::action_list_view::ActionListView;
-use crate::actions::action_ids;
-use crate::actions::action_handler::{ActionDefinition, ActionHandler, ActionId, ActionItem};
+use crate::actions::action_handler::{
+    ActionDefinition, ActionHandler, ActionId, ActionItem, HandlerFactory,
+};
+use crate::actions::action_ids::{self, GOOGLE_SEARCH};
 use crate::config::Config;
 use crate::database::Database;
 
+pub struct GoogleHandlerFactory;
+
+impl HandlerFactory for GoogleHandlerFactory {
+    fn get_id(&self) -> &'static str {
+        GOOGLE_SEARCH
+    }
+
+    fn create_handlers_for_query(
+        &self,
+        query: &str,
+        db: Arc<Database>,
+        cx: &mut Context<ActionListView>,
+    ) -> Vec<ActionItem> {
+        let mut handlers = Vec::new();
+        handlers.push(GoogleHandler.create_action(db.clone(), cx));
+        handlers
+    }
+}
+
 #[derive(Clone)]
 pub struct GoogleHandler;
-
 impl ActionHandler for GoogleHandler {
     fn execute(&self, input: &str) -> anyhow::Result<()> {
         let encoded_query = urlencoding::encode(input);
@@ -35,11 +55,7 @@ impl ActionDefinition for GoogleHandler {
 
         ActionItem::new(
             self.get_id(),
-            name.clone(),
-            vec![],
-            "Search Google".to_string(),
             self.clone(),
-            |input: &str| input.len() > 0,
             move || {
                 div()
                     .flex()
@@ -71,9 +87,4 @@ impl ActionDefinition for GoogleHandler {
     fn get_name(&self) -> String {
         "Google Search".to_string()
     }
-
-    fn is_fallback(&self) -> bool {
-        true
-    }
 }
-

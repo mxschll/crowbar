@@ -5,8 +5,13 @@ use std::sync::Arc;
 use std::usize;
 
 pub trait HandlerFactory {
-    fn new(db: Arc<Database>, cx: &mut Context<ActionListView>) -> Box<dyn ActionHandler>;
-    fn create_handlers_for_query(query: &str, db: Arc<Database>, cx: &mut Context<ActionListView>) -> Vec<ActionItem>;
+    fn get_id(&self) -> &'static str;
+    fn create_handlers_for_query(
+        self: &Self,
+        query: &str,
+        db: Arc<Database>,
+        cx: &mut Context<ActionListView>,
+    ) -> Vec<ActionItem>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,24 +34,6 @@ impl ActionId {
 pub trait ActionHandler: Send + Sync {
     fn execute(&self, input: &str) -> anyhow::Result<()>;
     fn clone_box(&self) -> Box<dyn ActionHandler>;
-}
-
-pub trait ContextFilter: Send + Sync {
-    fn filter(&self, input: &str) -> bool;
-    fn clone_box(&self) -> Box<dyn ContextFilter>;
-}
-
-impl<F> ContextFilter for F
-where
-    F: Fn(&str) -> bool + Send + Sync + Clone + 'static,
-{
-    fn filter(&self, input: &str) -> bool {
-        (*self)(input)
-    }
-
-    fn clone_box(&self) -> Box<dyn ContextFilter> {
-        Box::new(self.clone())
-    }
 }
 
 pub trait RenderFn: Send + Sync {
@@ -77,12 +64,7 @@ pub trait ActionDefinition: Send + Sync {
     fn create_action(&self, db: Arc<Database>, cx: &mut Context<ActionListView>) -> ActionItem;
     fn get_id(&self) -> ActionId;
     fn get_name(&self) -> String;
-    
-    // Default implementation returns false - normal priority action
-    fn is_fallback(&self) -> bool {
-        false
-    }
-    
+
     // Get the relevance score for this action
     fn get_relevance(&self) -> usize {
         0 // Default relevance score
@@ -92,11 +74,7 @@ pub trait ActionDefinition: Send + Sync {
 #[derive(Clone, IntoElement)]
 pub struct ActionItem {
     pub id: ActionId,
-    pub name: String,
-    pub tags: Vec<String>,
-    pub function: String,
     pub handler: Box<dyn ActionHandler>,
-    pub context_filter: Box<dyn ContextFilter>,
     pub render: Box<dyn RenderFn + Send + Sync>,
     pub relevance: usize,
     pub relevance_boost: usize,
@@ -135,20 +113,10 @@ impl Clone for Box<dyn ActionHandler> {
     }
 }
 
-impl Clone for Box<dyn ContextFilter> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
-
 impl ActionItem {
-    pub fn new<H, F, R>(
+    pub fn new<H, R>(
         id: ActionId,
-        name: String,
-        tags: Vec<String>,
-        function: String,
         handler: H,
-        context_filter: F,
         render: R,
         relevance: usize,
         relevance_boost: usize,
@@ -156,16 +124,11 @@ impl ActionItem {
     ) -> Self
     where
         H: ActionHandler + 'static,
-        F: ContextFilter + 'static,
         R: RenderFn + 'static,
     {
         ActionItem {
             id,
-            name,
-            tags,
-            function,
             handler: Box::new(handler),
-            context_filter: Box::new(context_filter),
             render: Box::new(render),
             relevance,
             relevance_boost,
@@ -175,10 +138,6 @@ impl ActionItem {
 
     pub fn relevance(&self) -> usize {
         return self.relevance * self.relevance_boost;
-    }
-
-    pub fn should_display(&self, input: &str) -> bool {
-        return self.context_filter.filter(input);
     }
 
     pub fn execute(&self, input: &str) -> anyhow::Result<()> {

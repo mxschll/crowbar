@@ -1,5 +1,6 @@
 mod action_list_view;
 mod actions;
+mod commands;
 mod common;
 mod config;
 mod database;
@@ -101,9 +102,11 @@ impl Crowbar {
 
     fn update_time(&mut self, cx: &mut Context<Self>) {
         self.current_time = Local::now().format("%H:%M:%S").to_string();
-        
+
         let theme = cx.global::<Config>();
-        for item in theme.status_bar_left.iter()
+        for item in theme
+            .status_bar_left
+            .iter()
             .chain(theme.status_bar_center.iter())
             .chain(theme.status_bar_right.iter())
         {
@@ -112,24 +115,25 @@ impl Crowbar {
                 self.status_formats.insert(format.clone(), formatted);
             }
         }
-        
+
         cx.notify();
     }
 
     fn render_status_items(&self, items: &[StatusItem]) -> Vec<impl IntoElement> {
-        items.iter().map(|item| {
-            match item {
-                StatusItem::Text { content } => {
-                    div().child(content.clone())
-                }
+        items
+            .iter()
+            .map(|item| match item {
+                StatusItem::Text { content } => div().child(content.clone()),
                 StatusItem::DateTime { format } => {
-                    let formatted = self.status_formats.get(format).cloned().unwrap_or_else(|| {
-                        Local::now().format(format).to_string()
-                    });
+                    let formatted = self
+                        .status_formats
+                        .get(format)
+                        .cloned()
+                        .unwrap_or_else(|| Local::now().format(format).to_string());
                     div().child(formatted)
                 }
-            }
-        }).collect()
+            })
+            .collect()
     }
 }
 
@@ -189,7 +193,6 @@ impl Render for Crowbar {
                             .gap_2()
                             .items_center()
                             .children(self.render_status_items(&config.status_bar_left)),
-                        
                         div()
                             .flex()
                             .flex_row()
@@ -197,7 +200,6 @@ impl Render for Crowbar {
                             .items_center()
                             .justify_center()
                             .children(self.render_status_items(&config.status_bar_center)),
-                        
                         div()
                             .flex()
                             .flex_row()

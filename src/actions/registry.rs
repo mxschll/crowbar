@@ -1,22 +1,24 @@
 use crate::action_list_view::ActionListView;
-use crate::actions::action_handler::{ActionDefinition, ActionItem};
+use crate::actions::action_handler::ActionItem;
 use crate::actions::handlers::{
-    browser_history_handler::BrowserHistoryFactory,
-    browser_history_handler::BrowserHistoryHandler,
-    duckduckgo_handler::DuckDuckGoHandler, google_handler::GoogleHandler,
-    perplexity_handler::PerplexityHandler, url_handler::UrlHandler, yandex_handler::YandexHandler,
+    browser_history_handler::BrowserHistoryHandlerFactory,
+    duckduckgo_handler::DuckDuckGoHandlerFactory, google_handler::GoogleHandlerFactory,
+    perplexity_handler::PerplexityHandlerFactory, url_handler::UrlHandlerFactory,
+    yandex_handler::YandexHandlerFactory,
 };
 use crate::database::Database;
 use gpui::Context;
 use log::info;
 use std::sync::Arc;
 
+use super::action_handler::HandlerFactory;
+use super::handlers::executable_handler::AppHandlerFactory;
 use super::scanner::ActionScanner;
-
+use crate::database::ActionHandlerModel;
 pub struct ActionRegistry {
     db: Arc<Database>,
-    builtin_actions: Vec<Box<dyn ActionDefinition>>,
     filtered_actions: Vec<ActionItem>,
+    handler_factories: Vec<Box<dyn HandlerFactory>>,
 }
 
 impl ActionRegistry {
@@ -25,17 +27,18 @@ impl ActionRegistry {
 
         let mut registry = Self {
             db: db.clone(),
-            builtin_actions: Vec::new(),
             filtered_actions: Vec::new(),
+            handler_factories: Vec::new(),
         };
 
         // Register built-in actions
-        registry.register_builtin(Box::new(GoogleHandler));
-        registry.register_builtin(Box::new(DuckDuckGoHandler));
-        registry.register_builtin(Box::new(YandexHandler));
-        registry.register_builtin(Box::new(PerplexityHandler));
-        registry.register_builtin(Box::new(UrlHandler));
-        registry.register_builtin(Box::new(BrowserHistoryHandler::new()));
+        registry.register_factory(Box::new(AppHandlerFactory));
+        registry.register_factory(Box::new(UrlHandlerFactory));
+        registry.register_factory(Box::new(BrowserHistoryHandlerFactory));
+        registry.register_factory(Box::new(GoogleHandlerFactory));
+        registry.register_factory(Box::new(PerplexityHandlerFactory));
+        registry.register_factory(Box::new(DuckDuckGoHandlerFactory));
+        registry.register_factory(Box::new(YandexHandlerFactory));
 
         registry.set_filter("", cx);
 
@@ -61,61 +64,32 @@ impl ActionRegistry {
         }
     }
 
-    pub fn register_builtin(&mut self, action: Box<dyn ActionDefinition>) {
-        self.builtin_actions.push(action);
+    pub fn register_factory(&mut self, factory: Box<dyn HandlerFactory>) {
+        let id = factory.get_id();
+
+        ActionHandlerModel::insert(self.db.connection(), id).unwrap();
+        let active_handlers =
+            ActionHandlerModel::get_active_handlers(self.db.connection()).unwrap();
+        if active_handlers.contains(&id.to_string()) {
+            self.handler_factories.push(factory);
+        }
     }
 
     pub fn set_filter(&mut self, filter: &str, cx: &mut Context<ActionListView>) {
-        let total_capacity = self.builtin_actions.len() + 30; // DB returns max 10 + history results
-        let mut normal_actions = Vec::with_capacity(total_capacity);
-        let mut fallback_actions = Vec::with_capacity(self.builtin_actions.len());
+        let mut combined_handlers = Vec::new();
 
-        // Get dynamic actions from DB - these are always normal priority
-        if let Ok(dynamic_actions) = self.db.get_actions_filtered(filter) {
-            normal_actions.extend(
-                dynamic_actions
-                    .into_iter()
-                    .map(|action_def| action_def.create_action(self.db.clone(), cx)),
-            );
-        }
-        
-        // Add browser history actions for the current filter
-        if !filter.is_empty() {
-            let history_actions = BrowserHistoryFactory::create_actions_for_query(filter, self.db.clone(), cx);
-            normal_actions.extend(history_actions);
+        for factory in &self.handler_factories {
+            combined_handlers.extend(factory.create_handlers_for_query(
+                filter,
+                self.db.clone(),
+                cx,
+            ));
         }
 
-        // Process built-in actions based on priority
-        for action_def in self.builtin_actions.iter() {
-            let action_item = action_def.create_action(self.db.clone(), cx);
-            
-            // Skip actions that wouldn't display anyway
-            if !action_item.should_display(filter) {
-                continue;
-            }
-            
-            if action_def.is_fallback() {
-                fallback_actions.push(action_item);
-            } else {
-                normal_actions.push(action_item);
-            }
-        }
+        combined_handlers.sort();
 
-        // Sort both groups by their internal relevance
-        normal_actions.sort();
-        fallback_actions.sort();
-        
-        // Reserve space for the combined list
-        let mut combined_actions = Vec::with_capacity(normal_actions.len() + fallback_actions.len());
-        
-        // Add all normal actions first
-        combined_actions.extend(normal_actions);
-        
-        // Then add all fallback actions
-        // This ensures fallbacks always appear after normal actions regardless of their relevance score
-        combined_actions.extend(fallback_actions);
-        
-        self.filtered_actions = combined_actions;
+        let end = combined_handlers.len().min(10);
+        self.filtered_actions = combined_handlers[0..end].to_vec();
     }
 
     pub fn get_actions(&self) -> &Vec<ActionItem> {

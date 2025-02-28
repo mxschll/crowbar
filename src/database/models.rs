@@ -10,6 +10,9 @@ pub struct ProgramItem;
 #[derive(Debug)]
 pub struct DesktopItem;
 
+#[derive(Debug)]
+pub struct ActionHandlerModel;
+
 impl Action {
     pub fn insert(conn: &Connection, name: &str, action_type: &str) -> Result<i64> {
         // Create a searchable name by removing special chars and converting to lowercase
@@ -57,5 +60,29 @@ impl DesktopItem {
         )?;
 
         Ok(action_id)
+    }
+}
+
+impl ActionHandlerModel {
+    pub fn insert(conn: &Connection, id: &str) -> Result<i64> {
+        conn.execute("INSERT OR IGNORE INTO handlers (id) VALUES (?1)", (id,))?;
+        Ok(0)
+    }
+
+    pub fn get_active_handlers(conn: &Connection) -> Result<Vec<String>> {
+        let mut stmt = conn.prepare("SELECT id FROM handlers WHERE enabled = 1")?;
+        let handlers_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
+
+        let handlers: Vec<String> = handlers_iter.collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(handlers)
+    }
+
+    pub fn set_enabled(conn: &Connection, handler_id: &str, enabled: bool) -> Result<()> {
+        dbg!(&handler_id, &enabled);
+        conn.execute(
+            "UPDATE handlers SET enabled = ?1 WHERE id = ?2",
+            (enabled, handler_id),
+        )?;
+        Ok(())
     }
 }

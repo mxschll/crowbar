@@ -4,14 +4,38 @@ use std::sync::Arc;
 use url::Url;
 
 use crate::action_list_view::ActionListView;
-use crate::actions::action_ids;
-use crate::actions::action_handler::{ActionDefinition, ActionHandler, ActionId, ActionItem};
+use crate::actions::action_handler::{
+    ActionDefinition, ActionHandler, ActionId, ActionItem, HandlerFactory,
+};
+use crate::actions::action_ids::{self, URL_OPEN};
 use crate::config::Config;
 use crate::database::Database;
 
+pub struct UrlHandlerFactory;
+
+impl HandlerFactory for UrlHandlerFactory {
+    fn get_id(&self) -> &'static str {
+        URL_OPEN
+    }
+
+    fn create_handlers_for_query(
+        &self,
+        query: &str,
+        db: Arc<Database>,
+        cx: &mut Context<ActionListView>,
+    ) -> Vec<ActionItem> {
+        if query.is_empty() || !Url::parse(query).is_ok() {
+            return Vec::new();
+        }
+
+        let mut handlers = Vec::new();
+        handlers.push(UrlHandler.create_action(db.clone(), cx));
+        handlers
+    }
+}
+
 #[derive(Clone)]
 pub struct UrlHandler;
-
 impl ActionHandler for UrlHandler {
     fn execute(&self, input: &str) -> anyhow::Result<()> {
         open::that(input)?;
@@ -33,11 +57,7 @@ impl ActionDefinition for UrlHandler {
 
         ActionItem::new(
             self.get_id(),
-            name.clone(),
-            vec![],
-            "Opens URL in default browser".to_string(),
             self.clone(),
-            |input: &str| Url::parse(input).is_ok(),
             move || {
                 div()
                     .flex()

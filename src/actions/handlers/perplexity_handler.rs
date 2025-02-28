@@ -3,14 +3,34 @@ use gpui::{div, Context, Element, ParentElement, Styled};
 use std::sync::Arc;
 
 use crate::action_list_view::ActionListView;
-use crate::actions::action_ids;
-use crate::actions::action_handler::{ActionDefinition, ActionHandler, ActionId, ActionItem};
+use crate::actions::action_handler::{
+    ActionDefinition, ActionHandler, ActionId, ActionItem, HandlerFactory,
+};
+use crate::actions::action_ids::{self, PERPLEXITY_SEARCH};
 use crate::config::Config;
 use crate::database::Database;
 
+pub struct PerplexityHandlerFactory;
+
+impl HandlerFactory for PerplexityHandlerFactory {
+    fn get_id(&self) -> &'static str {
+        PERPLEXITY_SEARCH
+    }
+
+    fn create_handlers_for_query(
+        &self,
+        query: &str,
+        db: Arc<Database>,
+        cx: &mut Context<ActionListView>,
+    ) -> Vec<ActionItem> {
+        let mut handlers = Vec::new();
+        handlers.push(PerplexityHandler.create_action(db.clone(), cx));
+        handlers
+    }
+}
+
 #[derive(Clone)]
 pub struct PerplexityHandler;
-
 impl ActionHandler for PerplexityHandler {
     fn execute(&self, input: &str) -> anyhow::Result<()> {
         let encoded_query = urlencoding::encode(input);
@@ -34,11 +54,7 @@ impl ActionDefinition for PerplexityHandler {
 
         ActionItem::new(
             self.get_id(),
-            name.clone(),
-            vec![],
-            "Search with Perplexity AI".to_string(),
             self.clone(),
-            |input: &str| input.len() > 0,
             move || {
                 div()
                     .flex()
@@ -69,9 +85,5 @@ impl ActionDefinition for PerplexityHandler {
 
     fn get_name(&self) -> String {
         "Perplexity Search".to_string()
-    }
-
-    fn is_fallback(&self) -> bool {
-        true
     }
 }

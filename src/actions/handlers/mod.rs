@@ -1,5 +1,4 @@
-pub mod app_handler;
-pub mod bin_handler;
+pub mod executable_handler;
 pub mod browser_history_handler;
 pub mod duckduckgo_handler;
 pub mod google_handler;
