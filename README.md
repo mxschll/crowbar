@@ -150,3 +150,29 @@ Examples of datetime formats:
 You can combine multiple items in each section, and they will be displayed with a small gap between them.
 
 If the configuration file becomes corrupted or contains invalid values, Crowbar will override it with the default values.
+
+## Modules
+
+You can enable or disable specific features as needed.
+To enable or disable modules, open Crowbar and use the following commands:
+
+- `:enable [module_id]` - Enable a specific module
+- `:disable [module_id]` - Disable a specific module
+
+For example, to disable the Google search module, you would type `:disable google` in the Crowbar search field.
+
+### Available Modules
+
+The following modules are available in Crowbar:
+
+| Module ID | Description | Default State |
+|-----------|-------------|--------------|
+| `executable` | Launches desktop applications and binary executables | Enabled |
+| `url` | Opens URLs in your default browser | Enabled |
+| `browser-history` | Provides quick access to your browser history | Enabled |
+| `google` | Allows direct Google searches | Enabled |
+| `duckduckgo` | Allows direct DuckDuckGo searches | Enabled |
+| `yandex` | Allows direct Yandex searches | Enabled |
+| `perplexity` | Allows direct Perplexity AI searches | Enabled |
+
+When a module is disabled, its functionality won't appear in search results. 
