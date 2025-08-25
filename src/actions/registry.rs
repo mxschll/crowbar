@@ -15,6 +15,7 @@ use super::action_handler::HandlerFactory;
 use super::handlers::executable_handler::AppHandlerFactory;
 use super::scanner::ActionScanner;
 use crate::database::ActionHandlerModel;
+
 pub struct ActionRegistry {
     db: Arc<Database>,
     filtered_actions: Vec<ActionItem>,
@@ -31,18 +32,33 @@ impl ActionRegistry {
             handler_factories: Vec::new(),
         };
 
-        // Register built-in actions
-        registry.register_factory(Box::new(AppHandlerFactory));
-        registry.register_factory(Box::new(UrlHandlerFactory));
-        registry.register_factory(Box::new(BrowserHistoryHandlerFactory));
-        registry.register_factory(Box::new(GoogleHandlerFactory));
-        registry.register_factory(Box::new(PerplexityHandlerFactory));
-        registry.register_factory(Box::new(DuckDuckGoHandlerFactory));
-        registry.register_factory(Box::new(YandexHandlerFactory));
-
+        registry.lazy_register_factories();
         registry.set_filter("", cx);
 
         registry
+    }
+
+    fn lazy_register_factories(&mut self) {
+        let factories: Vec<Box<dyn HandlerFactory>> = vec![
+            Box::new(AppHandlerFactory),
+            Box::new(UrlHandlerFactory),
+            Box::new(BrowserHistoryHandlerFactory),
+            Box::new(GoogleHandlerFactory),
+            Box::new(PerplexityHandlerFactory),
+            Box::new(DuckDuckGoHandlerFactory),
+            Box::new(YandexHandlerFactory),
+        ];
+
+        for factory in factories {
+            let id = factory.get_id();
+            let _ = ActionHandlerModel::insert(self.db.connection(), id);
+            
+            let active_handlers = ActionHandlerModel::get_active_handlers(self.db.connection())
+                .unwrap_or_default();
+            if active_handlers.contains(&id.to_string()) {
+                self.handler_factories.push(factory);
+            }
+        }
     }
 
     pub fn needs_scan(&self) -> bool {
@@ -50,11 +66,10 @@ impl ActionRegistry {
     }
 
     pub fn scan(&self, cx: &mut Context<ActionListView>) {
-        // Check if we need to scan for dynamic actions
         if ActionScanner::needs_scan(self.db.connection()) {
-            info!("No dynamic actions found, starting background scan");
+            info!("Starting background system scan");
+            let db = self.db.clone();
             cx.spawn(|view, mut cx| async move {
-                let db = Arc::new(Database::new().unwrap());
                 ActionScanner::scan_system(&db);
                 let _ = view.update(&mut cx, |_this, cx| {
                     cx.notify();
@@ -66,10 +81,10 @@ impl ActionRegistry {
 
     pub fn register_factory(&mut self, factory: Box<dyn HandlerFactory>) {
         let id = factory.get_id();
-
-        ActionHandlerModel::insert(self.db.connection(), id).unwrap();
-        let active_handlers =
-            ActionHandlerModel::get_active_handlers(self.db.connection()).unwrap();
+        let _ = ActionHandlerModel::insert(self.db.connection(), id);
+        
+        let active_handlers = ActionHandlerModel::get_active_handlers(self.db.connection())
+            .unwrap_or_default();
         if active_handlers.contains(&id.to_string()) {
             self.handler_factories.push(factory);
         }

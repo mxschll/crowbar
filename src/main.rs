@@ -227,7 +227,9 @@ impl Render for Crowbar {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::builder().init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Warn)
+        .init();
 
     Application::new().run(|cx: &mut App| {
         Config::init(cx);

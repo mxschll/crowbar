@@ -1,10 +1,12 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, sync::OnceLock};
 
 use anyhow::{Context, Result};
 use gpui::{App, Global, Rgba};
 use log;
 use serde::{Deserialize, Serialize};
 use toml;
+
+static CONFIG_CACHE: OnceLock<Config> = OnceLock::new();
 
 /// A color in RGB format
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
@@ -90,6 +92,7 @@ impl Default for StatusItem {
 }
 
 /// Application configuration
+#[derive(Clone)]
 pub struct Config {
     pub text_primary_color: Rgba,
     pub text_secondary_color: Rgba,
@@ -268,11 +271,27 @@ impl<'de> Deserialize<'de> for Config {
 
 impl Config {
     pub fn init(cx: &mut App) {
-        let config = Self::load().unwrap_or_else(|e| {
-            log::error!("Failed to load config: {}", e);
-            Config::default()
+        let config = CONFIG_CACHE.get_or_init(|| {
+            Self::load_fast().unwrap_or_else(|e| {
+                log::error!("Failed to load config: {}", e);
+                Config::default()
+            })
         });
-        cx.set_global(config);
+        cx.set_global((*config).clone());
+    }
+
+    fn load_fast() -> Result<Self> {
+        let config_path = Self::config_path()?;
+        
+        if !config_path.exists() {
+            return Ok(Config::default());
+        }
+
+        let config_str = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read config file at {:?}", config_path))?;
+
+        toml::from_str(&config_str)
+            .or_else(|_| Ok(Config::default()))
     }
 
     /// Load configuration from disk, creating a default if none exists
